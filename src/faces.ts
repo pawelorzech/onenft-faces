@@ -80,14 +80,16 @@ export type Traits = { items: number[]; skin: number; hair: number; top: number;
 /** Pins by slot name, pinnable slots only, common or uncommon items only. */
 export type Pins = Partial<Record<string, number>>;
 export const PINNABLE = SLOTS.map((s, i) => (s.pinnable ? i : -1)).filter((i) => i >= 0);
-/** Pin keys in byte order: the pinnable slots, then skin. Eight bytes in a uint64, 0xff for none. */
-export const PIN_KEYS = [...PINNABLE.map((k) => SLOTS[k].slot), "skin"];
+/** Pin keys in byte order: the pinnable slots, then skin, hair colour, ground. Eight bytes in a uint64, 0xff for none. */
+export const PIN_KEYS = [...PINNABLE.map((k) => SLOTS[k].slot), "skin", "hairColour", "ground"];
 export const NO_PIN = 0xff;
 export const NO_PINS = 0xffffffffffffffffn;
-export const MAX_PINS = 3;
+/** No cap beyond the keys themselves: seven pins is a fully chosen face. */
+export const MAX_PINS = 7;
 /** The 1/1 odds adapt: any roll hits the pool with probability poolLeft / tokensLeft, so on average every 1/1 is rolled by the end. */
 export const MAX_SUPPLY = 10000;
-export const PIN_PRICES_WEI = [0n, 500_000_000_000_000n, 1_500_000_000_000_000n, 4_000_000_000_000_000n];
+/** The price doubles with every pin: 0.0005 ETH for one, 0.032 ETH for all seven. */
+export const PIN_PRICES_WEI = [0n, ...Array.from({ length: 7 }, (_, i) => 500_000_000_000_000n << BigInt(i))];
 
 export function pinOk(slot: number, item: number): boolean {
   const s = SLOTS[slot];
@@ -102,6 +104,8 @@ export function skinPinOk(i: number): boolean {
 }
 export function pinKeyOk(key: string, value: number): boolean {
   if (key === "skin") return skinPinOk(value);
+  if (key === "hairColour") return value < HAIRS.length;
+  if (key === "ground") return value < GROUNDS.length;
   const k = SLOTS.findIndex((s) => s.slot === key);
   return k >= 0 && pinOk(k, value);
 }
@@ -143,6 +147,8 @@ export function traitsOf(seed: bigint, pins: Pins = {}, one?: number): Traits {
   let skin = pickWeighted(SKIN_WEIGHTS, d[S]);
   if (pins.skin !== undefined) { if (!skinPinOk(pins.skin)) throw new Error(`skin ${pins.skin} cannot be pinned`); skin = pins.skin; }
   const t: Traits = { items, skin, hair: d[S + 1] % HAIRS.length, top: d[S + 2] % TOPCOLORS.length, ground: d[S + 3] % GROUNDS.length, accent: d[S + 4] % ACCENTS.length };
+  if (pins.hairColour !== undefined) { if (pins.hairColour >= HAIRS.length) throw new Error("no such hair colour"); t.hair = pins.hairColour; }
+  if (pins.ground !== undefined) { if (pins.ground >= GROUNDS.length) throw new Error("no such ground"); t.ground = pins.ground; }
   if (one !== undefined) t.one = one;
   return t;
 }
@@ -257,6 +263,17 @@ export const BASE_TRAITS: Traits = { items: SLOTS.map((s) => s.items.findIndex((
 export function skinSvg(i: number, px = 96): string {
   return svgOf({ ...BASE_TRAITS, skin: i }, px);
 }
+/** One hair colour on the neutral base with short hair, for the gallery. */
+export function hairColourSvg(i: number, px = 96): string {
+  const t: Traits = { ...BASE_TRAITS, items: BASE_TRAITS.items.slice(), hair: i };
+  const k = SLOTS.findIndex((x) => x.slot === "hair");
+  t.items[k] = SLOTS[k].items.findIndex((it) => it.name === "Short");
+  return svgOf(t, px);
+}
+/** One ground colour on the neutral base, for the gallery. */
+export function groundSvg(i: number, px = 96): string {
+  return svgOf({ ...BASE_TRAITS, ground: i }, px);
+}
 /** One item on the neutral base, for the galleries. */
 export function itemSvg(slot: number, item: number, px = 96): string {
   const t: Traits = { ...BASE_TRAITS, items: BASE_TRAITS.items.slice() };
@@ -271,7 +288,9 @@ export function previewSvg(pins: Pins, px = 512): string {
   SLOTS.forEach((s, k) => { if (has(s.slot)) t.items[k] = pins[s.slot]!; });
   if (has("skin")) t.skin = pins.skin!;
   if (has("background")) t.ground = 3;
+  if (has("ground")) t.ground = pins.ground!;
   if (has("hair")) t.hair = 1;
+  if (has("hairColour")) { t.hair = pins.hairColour!; if (!has("hair")) t.items[SLOTS.findIndex((x) => x.slot === "hair")] = SLOTS[SLOTS.findIndex((x) => x.slot === "hair")].items.findIndex((i) => i.name === "Short"); }
   if (has("top")) t.top = 3;
   if (has("eyes")) t.accent = 0;
   return svgOf(t, px);

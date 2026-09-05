@@ -21,6 +21,8 @@ test("home without a contract renders the builder and says rolling opens later",
   expect(h).toContain("Rolling opens with the contract");
   expect(h).toContain('data-slot="hair"');
   expect(h).toContain('data-slot="skin"');
+  expect(h).toContain('data-slot="ground"');
+  expect(h).toContain('data-slot="hairColour"');
   expect(h).not.toContain('id="roll"');
 });
 

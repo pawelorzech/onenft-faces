@@ -50,7 +50,7 @@ contract FaceRenderer is IFaceRenderer {
             if (itemCount(m, k) == 0) revert BadData("items", k);
             if (pinnable(m, k)) pinnableSlots++;
         }
-        if (pinnableSlots > 7) revert BadData("pinnable", pinnableSlots);
+        if (pinnableSlots > 5) revert BadData("pinnable", pinnableSlots); // plus skin, hair colour, ground = eight bytes
         if (u8(m, L.skins) == 0 || u8(m, L.hairs) == 0 || u8(m, L.tops) == 0 || u8(m, L.grounds) == 0 || u8(m, L.accents) == 0) revert BadData("colours", 0);
         // The names section must hold exactly one name per slot, item, colour and 1/1, and end at the last byte.
         uint256 want = L.slots + L.totalItems + u8(m, L.skins) + u8(m, L.hairs) + u8(m, L.tops) + u8(m, L.grounds) + u8(m, L.accents) + L.ones;
@@ -192,7 +192,7 @@ contract FaceRenderer is IFaceRenderer {
         return luckyOf(seed, u8(DataStore.read(meta), 0), poolLength, tokensLeft);
     }
 
-    /// @dev Byte k of the pins, high byte first: the pinnable slots in order, then the skin, then spare bytes.
+    /// @dev Byte k of the pins, high byte first: the pinnable slots in order, then skin, hair colour, ground, then spare bytes.
     function pinByte(uint64 pins, uint256 k) internal pure returns (uint8) {
         return uint8(pins >> (8 * (7 - k)));
     }
@@ -201,7 +201,7 @@ contract FaceRenderer is IFaceRenderer {
         for (uint256 k = 0; k < 8; k++) if (pinByte(pins, k) != NO_PIN) n++;
     }
 
-    /// @notice Every set pin names a common or uncommon item of a pinnable slot, or a common or uncommon skin; spare bytes are empty.
+    /// @notice Every set pin names a common or uncommon item of a pinnable slot, a common or uncommon skin, a hair colour or a ground; spare bytes are empty.
     function pinsOk(uint64 pins) public view returns (bool) {
         bytes memory m = DataStore.read(meta);
         Layout memory L = layout(m);
@@ -218,6 +218,10 @@ contract FaceRenderer is IFaceRenderer {
             if (sk >= u8(m, L.skins)) return false;
             if (u8(m, L.skins + 1 + 12 * sk + 2) > 1) return false;
         }
+        uint8 hc = pinByte(pins, k++);
+        if (hc != NO_PIN && hc >= u8(m, L.hairs)) return false;
+        uint8 gr = pinByte(pins, k++);
+        if (gr != NO_PIN && gr >= u8(m, L.grounds)) return false;
         for (; k < 8; k++) if (pinByte(pins, k) != NO_PIN) return false;
         return true;
     }
@@ -245,6 +249,8 @@ contract FaceRenderer is IFaceRenderer {
             t.items[slot] = rolled;
         }
         uint8 skinPin = pinByte(pins, k);
+        uint8 hairPin = pinByte(pins, k + 1);
+        uint8 groundPin = pinByte(pins, k + 2);
         uint256 S = L.slots;
         uint256 skinCount = u8(m, L.skins);
         // skin weights sit at 12-byte stride: u16 weight, u8 tier, 9 bytes rgb
@@ -256,9 +262,9 @@ contract FaceRenderer is IFaceRenderer {
             if (roll < acc) { t.skin = i; break; }
         }
         if (skinPin != NO_PIN) t.skin = skinPin;
-        t.hair = draw(seed, S + 1) % u8(m, L.hairs);
+        t.hair = hairPin != NO_PIN ? hairPin : draw(seed, S + 1) % u8(m, L.hairs);
         t.top = draw(seed, S + 2) % u8(m, L.tops);
-        t.ground = draw(seed, S + 3) % u8(m, L.grounds);
+        t.ground = groundPin != NO_PIN ? groundPin : draw(seed, S + 3) % u8(m, L.grounds);
         t.accent = draw(seed, S + 4) % u8(m, L.accents);
         t.one = one;
     }

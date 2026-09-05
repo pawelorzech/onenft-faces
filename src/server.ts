@@ -1,5 +1,5 @@
 import { SLOTS } from "./sprites.ts";
-import { svgOf, itemSvg, skinSvg, previewSvg, unpackPins, faceOfDay, pinKeyOk, SKINS } from "./faces.ts";
+import { svgOf, itemSvg, skinSvg, hairColourSvg, groundSvg, previewSvg, unpackPins, faceOfDay, pinKeyOk, SKINS, HAIRS, GROUNDS } from "./faces.ts";
 import { chainState, contractEnabled, startRollScan, canRoll, CONTRACT, CHAIN_ID, EPOCH_SECONDS } from "./contract.ts";
 import { homePage, facePage, howPage, notFound, traitsOfRecord } from "./site.ts";
 import { rarityPage, onesPage, holderPage, assetsPage } from "./pages.ts";
@@ -54,6 +54,10 @@ Bun.serve({
       for (const [key, item] of Object.entries(pins)) if (!pinKeyOk(key, item!)) return new Response("bad pin", { status: 400 });
       return svg(previewSvg(pins), true);
     }
+    const hc = path.match(/^\/haircolour\/(\d{1,2})\.svg$/);
+    if (hc) return HAIRS[Number(hc[1])] ? svg(hairColourSvg(Number(hc[1]), 96), true) : new Response("no such colour", { status: 404 });
+    const gr = path.match(/^\/ground\/(\d{1,2})\.svg$/);
+    if (gr) return GROUNDS[Number(gr[1])] ? svg(groundSvg(Number(gr[1]), 96), true) : new Response("no such ground", { status: 404 });
     const skin = path.match(/^\/skin\/(\d{1,2})\.svg$/);
     if (skin) {
       const i = Number(skin[1]);

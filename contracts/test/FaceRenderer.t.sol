@@ -91,7 +91,10 @@ contract FaceRendererTest is Test {
         assertFalse(r.pinsOk(0xffff0dffffffffff)); // eyes 13 Cyclops, legendary
         assertTrue(r.pinsOk(0xffffffff02ffffff)); // skin 2 Tan, common
         assertFalse(r.pinsOk(0xffffffff12ffffff)); // skin 18 Gold, legendary
-        assertFalse(r.pinsOk(0xffffffffff00ffff)); // a spare byte set
+        assertTrue(r.pinsOk(0xffffffffff0305ff)); // hair colour 3, ground 5
+        assertFalse(r.pinsOk(0xffffffffff63ffff)); // hair colour 99 does not exist
+        assertFalse(r.pinsOk(0xffffffffffff63ff)); // ground 99 does not exist
+        assertFalse(r.pinsOk(0xffffffffffffff00)); // the spare byte set
         assertEq(r.pinCount(type(uint64).max), 0);
         assertEq(r.pinCount(0x0001ffffffffffff), 2);
         assertEq(r.pinCount(0x00010203ffffffff), 4);

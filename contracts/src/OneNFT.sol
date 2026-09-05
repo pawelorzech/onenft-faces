@@ -7,8 +7,8 @@ import {IFaceRenderer} from "./IFaceRenderer.sol";
 
 /// @title OneNFT, one face a day per wallet
 /// @notice Every wallet may roll one face per UTC day, free. A roll may pin up to
-/// three of the pinnable things (background, top, eyes, hair, skin) to a common or
-/// uncommon item for a fee that rises with the number of pins; the rest is luck.
+/// any of the pinnable things (background, top, eyes, hair, skin, hair colour, ground)
+/// to a common or uncommon item for a fee that doubles with every pin; the rest is luck.
 /// Any roll may land on a 1/1, once each, with odds of pool left over tokens
 /// left, so the pool empties with the supply. The author's wallet gets one free
 /// roll a day too, which anyone may trigger. Supply stops at MAX_SUPPLY.
@@ -114,13 +114,11 @@ contract OneNFT is ERC721, Ownable {
         return lastRollEpoch[wallet] < currentEpoch() && totalSupply + pending < MAX_SUPPLY;
     }
 
-    /// @notice 0, 0.0005, 0.0015 or 0.004 ETH for zero to three pins.
+    /// @notice The price doubles with every pin: 0.0005 ETH for one, 0.032 ETH for all seven.
     function priceOf(uint64 pins) public view returns (uint256) {
         uint256 n = IFaceRenderer(renderer).pinCount(pins);
         if (n == 0) return 0;
-        if (n == 1) return 0.0005 ether;
-        if (n == 2) return 0.0015 ether;
-        return 0.004 ether;
+        return 0.0005 ether << (n - 1);
     }
 
     function poolLeft() external view returns (uint256) {
@@ -130,11 +128,11 @@ contract OneNFT is ERC721, Ownable {
     // ---- rolling: commit, then reveal ----
 
     /// @notice Spend today's roll: fix the pins, pay the fee, hold a place. Reveal one block later.
-    /// @param pins one byte per pin key, high byte first: background, top, eyes, hair, skin, then spare; 255 for none
+    /// @param pins one byte per pin key, high byte first: background, top, eyes, hair, skin, hair colour, ground, one spare; 255 for none
     function commit(uint64 pins) external payable {
         uint256 price = priceOf(pins);
         if (msg.value != price) revert WrongPrice(price, msg.value);
-        if (pins != NO_PINS && (IFaceRenderer(renderer).pinCount(pins) > 3 || !IFaceRenderer(renderer).pinsOk(pins))) revert BadPins(pins);
+        if (pins != NO_PINS && !IFaceRenderer(renderer).pinsOk(pins)) revert BadPins(pins);
         _commit(msg.sender, pins, price);
         if (price > 0) {
             (bool ok,) = author.call{value: price}("");

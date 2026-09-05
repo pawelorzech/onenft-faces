@@ -29,7 +29,11 @@ ARR=$(echo "$STORES" | jq -r 'join(",")')
 for a in $(echo "$STORES" | jq -r '.[]') "$META"; do
   for i in $(seq 1 30); do [ "$(cast code "$a" --rpc-url "$RPC")" != "0x" ] && break; sleep 2; done
 done
-REN=$(forge create src/FaceRenderer.sol:FaceRenderer --rpc-url "$RPC" --private-key "$PK" --broadcast --constructor-args "[$ARR]" "$META" "$SPRITES" 2>&1 | tee -a "$LOG" | grep -E "Deployed to" | awk '{print $3}')
+REN=""
+for try in 1 2 3 4; do
+  REN=$(forge create src/FaceRenderer.sol:FaceRenderer --rpc-url "$RPC" --private-key "$PK" --broadcast --constructor-args "[$ARR]" "$META" "$SPRITES" 2>&1 | tee -a "$LOG" | grep -E "Deployed to" | awk '{print $3}')
+  [ -n "$REN" ] && break; echo "renderer create failed (try $try), waiting"; sleep 8
+done
 [ -n "$REN" ] || { echo "renderer deploy failed, see $LOG"; exit 1; }
 echo "FaceRenderer $REN"
 NFT=$(forge create src/OneNFT.sol:OneNFT --rpc-url "$RPC" --private-key "$PK" --broadcast --constructor-args "faces.onenft.click" "FACE" "$AUTHOR" "$REN" 2>&1 | tee -a "$LOG" | grep -E "Deployed to" | awk '{print $3}')
