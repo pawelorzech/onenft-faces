@@ -765,7 +765,7 @@ ${rows.length ? rows.join("\n") : chain ? `<p class="lead" style="padding:34px">
 ${builderScript(chain)}
 ${chain ? YOURS : ""}
 ${COUNTDOWN}`;
-  return layout(`${SITE}`, p, body, "/today.png", "/");
+  return layout(`One face a day | ${SITE}`, p, body, "/today.png", "/");
 }
 
 export function facePage(id: number, f: FaceRecord, chain: ChainState, names: Names = NO_NAMES, status: ChainStatus | null = null): string {
