@@ -5,7 +5,7 @@
  * Tiers set the weight tables in faces.ts: common, uncommon, rare, legendary.
  * Pinnable slots are marked; a pin may name common or uncommon items only.
  */
-import { Canvas, ROLE } from "./pixels.ts";
+import { Canvas, ROLE, type Role } from "./pixels.ts";
 const { K, A, a, L, B, b, W } = ROLE;
 
 export type Tier = "common" | "uncommon" | "rare" | "legendary";

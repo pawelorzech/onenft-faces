@@ -35,3 +35,14 @@ export function cardPng(key: string, title: string, sub: string, t: Traits, keep
   if (keep) cache.set(key, png);
   return png;
 }
+
+/** The face itself as a square PNG, for the download links that work without JavaScript. Pixel art, so no smoothing. */
+export const SQUARE_PX = 1024;
+const squares = new Map<number, Uint8Array>();
+export function squarePng(id: number, t: Traits): Uint8Array {
+  const hit = squares.get(id);
+  if (hit) return hit;
+  const png = new Resvg(svgOf(t), { fitTo: { mode: "width", value: SQUARE_PX }, imageRendering: 1 }).render().asPng();
+  squares.set(id, png);
+  return png;
+}

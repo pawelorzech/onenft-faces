@@ -230,7 +230,7 @@ export function svgOf(t: Traits, px = 512): string {
 
 export function attributesOf(t: Traits): { trait_type: string; value: string; tier?: Tier }[] {
   if (t.one !== undefined) return [{ trait_type: "One of one", value: ONE_OF_ONES[t.one].name, tier: "legendary" }, { trait_type: "Background", value: SLOTS[0].items[t.items[0]].name }, { trait_type: "Ground", value: GROUNDS[t.ground].name }];
-  const a = SLOTS.map((s, k) => ({ trait_type: s.trait, value: s.items[t.items[k]].name, tier: s.items[t.items[k]].tier }));
+  const a: { trait_type: string; value: string; tier?: Tier }[] = SLOTS.map((s, k) => ({ trait_type: s.trait, value: s.items[t.items[k]].name, tier: s.items[t.items[k]].tier }));
   a.push({ trait_type: "Skin", value: SKINS[t.skin].name, tier: SKINS[t.skin].tier }, { trait_type: "Hair colour", value: HAIRS[t.hair].name }, { trait_type: "Top colour", value: TOPCOLORS[t.top].name }, { trait_type: "Ground", value: GROUNDS[t.ground].name }, { trait_type: "Accent", value: ACCENTS[t.accent].name });
   return a;
 }
