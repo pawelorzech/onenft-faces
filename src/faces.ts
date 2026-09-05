@@ -45,7 +45,7 @@ export const SKINS: Swatch[] = [
   sw("Porcelain", "#f3d6bd", "#d9b092", "#fbe9d9"), sw("Peach", "#eebc94", "#cf9668", "#f6d6b8"), sw("Tan", "#d39a68", "#ad7547", "#e4b78d"),
   sw("Olive", "#b98a5c", "#93673c", "#d1a97e"), sw("Brown", "#9a6541", "#75482c", "#b5825f"), sw("Deep", "#6a4430", "#4b2d1e", "#86604a"),
   sw("Ebony", "#3e2a20", "#291a12", "#5a4235"),
-  sw("Rosy", "#f0bfb0", "#d19787", "#f8dcd3", "uncommon"), sw("Sallow", "#e1c78f", "#b9a06a", "#ecdcb4", "uncommon"), sw("Bronze", "#b4753f", "#8c5729", "#c9955f", "uncommon"), sw("Umber", "#553524", "#3a2318", "#704b36", "uncommon"),
+  sw("Rosy", "#f0bfb0", "#d19787", "#f8dcd3"), sw("Sallow", "#e1c78f", "#b9a06a", "#ecdcb4"), sw("Bronze", "#b4753f", "#8c5729", "#c9955f"), sw("Umber", "#553524", "#3a2318", "#704b36"),
   sw("Mint", "#9fd3a2", "#6fa874", "#c6e8c6", "rare"), sw("Sky", "#9db8e0", "#6f8fc0", "#c3d5ee", "rare"), sw("Lilac", "#c3a8d9", "#9a7fb5", "#dcc9e8", "rare"),
   sw("Ash", "#b8b6ad", "#8d8b83", "#d3d1c9", "rare"), sw("Coral", "#f2937a", "#c86f5a", "#f7b5a3", "rare"), sw("Teal", "#5fb3ad", "#3f8a85", "#8fcfca", "rare"), sw("Moss", "#7a9a4a", "#597333", "#9cb96f", "rare"),
   sw("Gold", "#e3c15a", "#b8953a", "#f0da93", "legendary"), sw("Onyx", "#1e1c22", "#0e0d10", "#3a3742", "legendary"), sw("Neon", "#c8ff5a", "#93c93a", "#e0ff9a", "legendary"),
@@ -97,7 +97,7 @@ export function pinOk(slot: number, item: number): boolean {
   const t = s.items[item]?.tier;
   return t === "common" || t === "uncommon";
 }
-/** A skin may be pinned when it is a human tone: common or uncommon. */
+/** A skin may be pinned when it is a human tone: every human tone is common; fantasy tones are rare or legendary. */
 export function skinPinOk(i: number): boolean {
   const t = SKINS[i]?.tier;
   return t === "common" || t === "uncommon";

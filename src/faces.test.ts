@@ -82,7 +82,8 @@ test("svg is 32x32 rects only and metadata is one JSON line", () => {
 });
 
 test("skin tiers: human tones common or uncommon and pinnable, fantasy rarer", () => {
-  expect(SKINS.filter((s) => s.tier === "common").length).toBe(7);
+  expect(SKINS.filter((s) => s.tier === "common").length).toBe(11);
+  expect(SKINS.filter((s) => s.tier === "uncommon").length).toBe(0);
   expect(SKINS.filter((s) => s.tier === "rare").length).toBeGreaterThan(5);
   expect(SKIN_WEIGHTS[SKINS.findIndex((s) => s.name === "Gold")]).toBeLessThan(40);
 });
