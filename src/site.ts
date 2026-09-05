@@ -303,22 +303,30 @@ update();
 </script>`;
 }
 
-function galleries(): string {
-  return PINNABLE.map((k) => {
-    const s = SLOTS[k];
-    const items = s.items.map((it, i) => pinOk(k, i) ? `<button type="button" data-slot="${s.slot}" data-item="${i}" title="${esc(it.name)}"><img src="/item/${s.slot}/${i}.svg" alt="${esc(it.name)}" width="72" height="72" loading="lazy">${it.tier === "uncommon" ? `<span class="u">u</span>` : ""}</button>` : "").join("");
-    const rareCount = s.items.filter((it) => it.tier === "rare" || it.tier === "legendary").length;
-    return `<div class="gallery"><h3 class="syne">${esc(s.trait)}<span>${s.items.filter((it, i) => pinOk(k, i)).length} to pin, ${rareCount} only by luck</span></h3><div class="items px">${items}</div></div>`;
-  }).join("") + skinGallery();
+function itemGallery(k: number): string {
+  const s = SLOTS[k];
+  const items = s.items.map((it, i) => pinOk(k, i) ? `<button type="button" data-slot="${s.slot}" data-item="${i}" title="${esc(it.name)}"><img src="/item/${s.slot}/${i}.svg" alt="${esc(it.name)}" width="72" height="72" loading="lazy">${it.tier === "uncommon" ? `<span class="u">u</span>` : ""}</button>` : "").join("");
+  const rareCount = s.items.filter((it) => it.tier === "rare" || it.tier === "legendary").length;
+  return `<div class="gallery"><h3 class="syne">${esc(s.trait)}<span>${s.items.filter((it, i) => pinOk(k, i)).length} to pin, ${rareCount} only by luck</span></h3><div class="items px">${items}</div></div>`;
 }
 function skinGallery(): string {
-  const items = SKINS.map((sk, i) => skinPinOk(i) ? `<button type="button" data-slot="skin" data-item="${i}" title="${esc(sk.name)}"><img src="/skin/${i}.svg" alt="${esc(sk.name)}" width="72" height="72" loading="lazy">${sk.tier === "uncommon" ? `<span class="u">u</span>` : ""}</button>` : "").join("");
+  const items = SKINS.map((sk, i) => skinPinOk(i) ? `<button type="button" data-slot="skin" data-item="${i}" title="${esc(sk.name)}"><img src="/skin/${i}.svg" alt="${esc(sk.name)}" width="72" height="72" loading="lazy"></button>` : "").join("");
   const rare = SKINS.filter((sk) => sk.tier === "rare" || sk.tier === "legendary").length;
-  return `<div class="gallery"><h3 class="syne">Skin<span>${SKINS.filter((_, i) => skinPinOk(i)).length} to pin, ${rare} only by luck</span></h3><div class="items px">${items}</div></div>` + colourGallery("hairColour", "Hair colour", "/haircolour/", HAIRS) + colourGallery("ground", "Ground colour", "/ground/", GROUNDS);
+  return `<div class="gallery"><h3 class="syne">Skin<span>${SKINS.filter((_, i) => skinPinOk(i)).length} to pin, ${rare} only by luck</span></h3><div class="items px">${items}</div></div>`;
 }
 function colourGallery(key: string, title: string, base: string, list: { name: string; main: string }[]): string {
   const items = list.map((c, i) => `<button type="button" data-slot="${key}" data-item="${i}" title="${esc(c.name)}"><img src="${base}${i}.svg" alt="${esc(c.name)}" width="72" height="72" loading="lazy"><span class="sw" style="background:${c.main}"></span></button>`).join("");
   return `<div class="gallery"><h3 class="syne">${title}<span>${list.length} to pin</span></h3><div class="items px">${items}</div></div>`;
+}
+/** Pattern next to its colour: background then ground colour, hair then hair colour, then the rest. */
+const GALLERY_ORDER: (string | number)[] = ["background", "ground", "hair", "hairColour", "skin", "top", "eyes"];
+function galleries(): string {
+  return GALLERY_ORDER.map((key) => {
+    if (key === "ground") return colourGallery("ground", "Ground colour", "/ground/", GROUNDS);
+    if (key === "hairColour") return colourGallery("hairColour", "Hair colour", "/haircolour/", HAIRS);
+    if (key === "skin") return skinGallery();
+    return itemGallery(SLOTS.findIndex((s) => s.slot === key));
+  }).join("");
 }
 
 export function homePage(chain: ChainState | null, epoch: number, names: Names = NO_NAMES): string {
@@ -340,7 +348,8 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
   }
   const badge = chain && chain.chainId !== 8453 ? ` <span class="testnet">${chainName(chain.chainId)} testnet</span>` : "";
   const left = chain ? chain.secondsLeft : 86400 - (Math.floor(Date.now() / 1000) % 86400);
-  const keep = `<dl class="keep" id="keep">${PINNABLE.map((k) => `<dt>${esc(SLOTS[k].trait.toLowerCase())}</dt><dd data-keep="${SLOTS[k].slot}"><span class="luck">luck decides</span></dd>`).join("")}<dt>skin</dt><dd data-keep="skin"><span class="luck">luck decides</span></dd><dt>hair colour</dt><dd data-keep="hairColour"><span class="luck">luck decides</span></dd><dt>ground colour</dt><dd data-keep="ground"><span class="luck">luck decides</span></dd>${SLOTS.filter((s) => !s.pinnable).map((s) => `<dt>${esc(s.trait.toLowerCase())}</dt><dd><span class="luck">luck, always</span></dd>`).join("")}<dt>top and accent colour</dt><dd><span class="luck">luck, always</span></dd></dl>`;
+  const labels: Record<string, string> = { background: "background", ground: "ground colour", hair: "hair", hairColour: "hair colour", skin: "skin", top: "top", eyes: "eyes" };
+  const keep = `<dl class="keep" id="keep">${GALLERY_ORDER.map((key) => `<dt>${labels[key as string]}</dt><dd data-keep="${key}"><span class="luck">luck decides</span></dd>`).join("")}${SLOTS.filter((s) => !s.pinnable).map((s) => `<dt>${esc(s.trait.toLowerCase())}</dt><dd><span class="luck">luck, always</span></dd>`).join("")}<dt>top and accent colour</dt><dd><span class="luck">luck, always</span></dd></dl>`;
   const cta = chain
     ? `<div class="price"><span class="small">Today's roll</span><span class="syne" id="price">free</span></div>
 <button class="cta syne" id="roll">Roll for free</button>
