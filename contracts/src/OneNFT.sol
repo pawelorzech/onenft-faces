@@ -29,6 +29,9 @@ contract OneNFT is ERC721, Ownable {
     uint64 public constant NO_PINS = type(uint64).max;
 
     address public immutable author;
+    /// @notice The wallet that pays gas for reveals and treasury rolls; it takes KEEPER_BPS of every fee.
+    address public immutable keeper;
+    uint256 public constant KEEPER_BPS = 500;
     /// @dev Size of the 1/1 pool at deploy; a new renderer must know at least this many.
     uint256 public immutable oneOfOnes;
 
@@ -72,10 +75,11 @@ contract OneNFT is ERC721, Ownable {
     error BadRenderer(address renderer);
     error OwnershipIsPermanent();
 
-    constructor(string memory name_, string memory symbol_, address author_, address renderer_) ERC721(name_, symbol_) Ownable(author_) {
+    constructor(string memory name_, string memory symbol_, address author_, address keeper_, address renderer_) ERC721(name_, symbol_) Ownable(author_) {
         uint256 n = _checkRenderer(renderer_, 0);
         oneOfOnes = n;
         author = author_;
+        keeper = keeper_;
         renderer = renderer_;
         for (uint256 i = 0; i < n; i++) pool.push(uint8(i));
         emit RendererSet(renderer_);
@@ -128,6 +132,7 @@ contract OneNFT is ERC721, Ownable {
     // ---- rolling: commit, then reveal ----
 
     /// @notice Spend today's roll: fix the pins, pay the fee, hold a place. Reveal one block later.
+    /// The fee splits 95 to the author and 5 to the keeper, in basis points KEEPER_BPS.
     /// @param pins one byte per pin key, high byte first: background, top, eyes, hair, skin, hair colour, ground, one spare; 255 for none
     function commit(uint64 pins) external payable {
         uint256 price = priceOf(pins);
@@ -135,7 +140,10 @@ contract OneNFT is ERC721, Ownable {
         if (pins != NO_PINS && !IFaceRenderer(renderer).pinsOk(pins)) revert BadPins(pins);
         _commit(msg.sender, pins, price);
         if (price > 0) {
-            (bool ok,) = author.call{value: price}("");
+            uint256 tip = (price * KEEPER_BPS) / 10000;
+            (bool ok,) = author.call{value: price - tip}("");
+            if (!ok) revert PayoutFailed();
+            (ok,) = keeper.call{value: tip}("");
             if (!ok) revert PayoutFailed();
         }
     }

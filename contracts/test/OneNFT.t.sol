@@ -15,6 +15,7 @@ contract OneNFTTest is Test {
     address author = address(0xA11CE);
     address alice = address(0xA1);
     address bob = address(0xB0B);
+    address keeper = address(0xCAFE);
     FaceRenderer renderer;
     OneNFT nft;
 
@@ -27,7 +28,7 @@ contract OneNFTTest is Test {
         address[] memory s = new address[](n);
         for (uint256 i = 0; i < n; i++) s[i] = DataStore.write(vm.parseJsonBytes(d, string.concat("$.stores[", i.toString(), "]")));
         renderer = new FaceRenderer(s, DataStore.write(vm.parseJsonBytes(d, "$.meta")), sprites);
-        nft = new OneNFT("faces.onenft.click", "FACE", author, address(renderer));
+        nft = new OneNFT("faces.onenft.click", "FACE", author, keeper, address(renderer));
         vm.deal(alice, 1 ether);
         vm.deal(bob, 1 ether);
     }
@@ -89,8 +90,10 @@ contract OneNFTTest is Test {
         vm.expectRevert(abi.encodeWithSelector(OneNFT.WrongPrice.selector, 0.001 ether, 0));
         nft.commit(pins);
         uint256 before = author.balance;
+        uint256 kBefore = keeper.balance;
         uint256 id = rollFor(alice, pins, 0.001 ether);
-        assertEq(author.balance - before, 0.001 ether);
+        assertEq(author.balance - before, 0.00095 ether);
+        assertEq(keeper.balance - kBefore, 0.00005 ether);
         (, uint64 stored,,) = nft.faces(id);
         assertEq(stored, pins);
         assertEq(nft.priceOf(0x00ffffffffffffff), 0.0005 ether);

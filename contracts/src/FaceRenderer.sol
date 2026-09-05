@@ -32,9 +32,9 @@ contract FaceRenderer is IFaceRenderer {
     constructor(address[] memory stores_, address meta_, uint256 spriteCount_) {
         uint256 left = spriteCount_;
         for (uint256 i = 0; i < stores_.length; i++) {
-            uint256 want = left > PER_STORE ? PER_STORE : left;
-            if (stores_[i].code.length != want * RECORD + 1) revert BadData("store", stores_[i].code.length);
-            left -= want;
+            uint256 wantLen = left > PER_STORE ? PER_STORE : left;
+            if (stores_[i].code.length != wantLen * RECORD + 1) revert BadData("store", stores_[i].code.length);
+            left -= wantLen;
         }
         if (left != 0) revert BadData("stores", stores_.length);
         if (meta_.code.length < 64) revert BadData("meta", meta_.code.length);

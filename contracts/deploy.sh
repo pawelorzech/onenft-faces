@@ -31,12 +31,16 @@ for a in $(echo "$STORES" | jq -r '.[]') "$META"; do
 done
 REN=""
 for try in 1 2 3 4; do
-  REN=$(forge create src/FaceRenderer.sol:FaceRenderer --rpc-url "$RPC" --private-key "$PK" --broadcast --constructor-args "[$ARR]" "$META" "$SPRITES" 2>&1 | tee -a "$LOG" | grep -E "Deployed to" | awk '{print $3}')
+  REN=$( (forge create src/FaceRenderer.sol:FaceRenderer --rpc-url "$RPC" --private-key "$PK" --broadcast --constructor-args "[$ARR]" "$META" "$SPRITES" 2>&1 || true) | tee -a "$LOG" | grep -E "Deployed to" | awk '{print $3}' || true)
   [ -n "$REN" ] && break; echo "renderer create failed (try $try), waiting"; sleep 8
 done
 [ -n "$REN" ] || { echo "renderer deploy failed, see $LOG"; exit 1; }
 echo "FaceRenderer $REN"
-NFT=$(forge create src/OneNFT.sol:OneNFT --rpc-url "$RPC" --private-key "$PK" --broadcast --constructor-args "faces.onenft.click" "FACE" "$AUTHOR" "$REN" 2>&1 | tee -a "$LOG" | grep -E "Deployed to" | awk '{print $3}')
+NFT=""
+for try in 1 2 3; do
+  NFT=$( (forge create src/OneNFT.sol:OneNFT --rpc-url "$RPC" --private-key "$PK" --broadcast --constructor-args "faces.onenft.click" "FACE" "$AUTHOR" "$DEPLOYER" "$REN" 2>&1 || true) | tee -a "$LOG" | grep -E "Deployed to" | awk '{print $3}' || true)
+  [ -n "$NFT" ] && break; echo "token create failed (try $try), waiting"; sleep 8
+done
 [ -n "$NFT" ] || { echo "token deploy failed, see $LOG"; exit 1; }
 echo "OneNFT $NFT"
 unset PK
