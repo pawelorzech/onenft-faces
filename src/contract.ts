@@ -20,19 +20,19 @@ export const ABI = parseAbi([
   "function currentEpoch() view returns (uint256)",
   "function canRoll(address wallet) view returns (bool)",
   "function lastRollEpoch(address wallet) view returns (uint256)",
-  "function priceOf(uint64 pins) view returns (uint256)",
-  "function faces(uint256 tokenId) view returns (uint64 seed, uint64 pins, uint8 one, address renderer)",
+  "function priceOf(uint128 pins) view returns (uint256)",
+  "function faces(uint256 tokenId) view returns (uint64 seed, uint128 pins, uint8 one, address renderer)",
   "function ownerOf(uint256 tokenId) view returns (address)",
   "function pending() view returns (uint256)",
-  "function commits(address wallet) view returns (uint64 pins, uint64 blockNumber, uint128 paid)",
+  "function commits(address wallet) view returns (uint128 pins, uint64 blockNumber, uint64 paid)",
   "function revealBlockOf(address wallet) view returns (uint256)",
-  "function commit(uint64 pins) payable",
+  "function commit(uint128 pins) payable",
   "function commitForTreasury()",
   "function reveal(address wallet) returns (uint256)",
 ]);
-export const COMMIT_SELECTOR = toFunctionSelector("function commit(uint64 pins)");
-const COMMITTED = parseAbiItem("event Committed(address indexed wallet, uint64 pins, uint256 blockNumber, uint256 paid)");
-const ROLLED = parseAbiItem("event Rolled(uint256 indexed tokenId, address indexed to, uint64 seed, uint64 pins, uint8 one, uint256 paid)");
+export const COMMIT_SELECTOR = toFunctionSelector("function commit(uint128 pins)");
+const COMMITTED = parseAbiItem("event Committed(address indexed wallet, uint128 pins, uint256 blockNumber, uint256 paid)");
+const ROLLED = parseAbiItem("event Rolled(uint256 indexed tokenId, address indexed to, uint64 seed, uint128 pins, uint8 one, uint256 paid)");
 
 export type FaceRecord = { id: number; seed: bigint; pins: bigint; one: number; renderer: Address };
 export type Roll = { id: number; to: Address; tx: Hex; block: bigint; at: number; paid: bigint };

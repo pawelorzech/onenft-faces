@@ -7,7 +7,7 @@
  * reader could misunderstand. Facts (numbers, addresses, paths) stay exact.
  */
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
-import { traitsOf, svgOf, attributesOf, rarityOf, groundOf, faceOfDay, packPins, unpackPins, pinOk, skinPinOk, SKINS, HAIRS, GROUNDS, PINNABLE, PIN_KEYS, MAX_PINS, PIN_PRICES_WEI, combinations, type Traits, type Pins } from "./faces.ts";
+import { traitsOf, svgOf, attributesOf, rarityOf, groundOf, faceOfDay, packPins, unpackPins, pinOk, skinPinOk, SKINS, HAIRS, GROUNDS, TOPCOLORS, ACCENTS, PINNABLE, PIN_KEYS, PIN_BYTES, MAX_PINS, PIN_PRICES_WEI, combinations, type Traits, type Pins } from "./faces.ts";
 import { COMMIT_SELECTOR, type ChainState, type FaceRecord } from "./contract.ts";
 
 export type Names = Map<string, string>;
@@ -245,7 +245,7 @@ function builderScript(chain: ChainState | null): string {
     explorer: chain ? explorer(chain.chainId) : "",
     selector: COMMIT_SELECTOR,
     prices: PIN_PRICES_WEI.map((p) => p.toString()),
-    keys: Array.from({ length: 8 }, (_, k) => PIN_KEYS[k] ?? null),
+    keys: Array.from({ length: PIN_BYTES }, (_, k) => PIN_KEYS[k] ?? null),
     maxPins: MAX_PINS,
   });
   return `<script>
@@ -319,11 +319,13 @@ function colourGallery(key: string, title: string, base: string, list: { name: s
   return `<div class="gallery"><h3 class="syne">${title}<span>${list.length} to pin</span></h3><div class="items px">${items}</div></div>`;
 }
 /** Pattern next to its colour: background then ground colour, hair then hair colour, then the rest. */
-const GALLERY_ORDER: (string | number)[] = ["background", "ground", "hair", "hairColour", "skin", "top", "eyes"];
+const GALLERY_ORDER: string[] = ["background", "ground", "head", "skin", "eyes", "mouth", "hair", "hairColour", "top", "topColour", "accessory", "accent"];
 function galleries(): string {
   return GALLERY_ORDER.map((key) => {
     if (key === "ground") return colourGallery("ground", "Ground colour", "/ground/", GROUNDS);
     if (key === "hairColour") return colourGallery("hairColour", "Hair colour", "/haircolour/", HAIRS);
+    if (key === "topColour") return colourGallery("topColour", "Top colour", "/topcolour/", TOPCOLORS);
+    if (key === "accent") return colourGallery("accent", "Accent colour", "/accent/", ACCENTS);
     if (key === "skin") return skinGallery();
     return itemGallery(SLOTS.findIndex((s) => s.slot === key));
   }).join("");
@@ -348,20 +350,20 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
   }
   const badge = chain && chain.chainId !== 8453 ? ` <span class="testnet">${chainName(chain.chainId)} testnet</span>` : "";
   const left = chain ? chain.secondsLeft : 86400 - (Math.floor(Date.now() / 1000) % 86400);
-  const labels: Record<string, string> = { background: "background", ground: "ground colour", hair: "hair", hairColour: "hair colour", skin: "skin", top: "top", eyes: "eyes" };
-  const keep = `<dl class="keep" id="keep">${GALLERY_ORDER.map((key) => `<dt>${labels[key as string]}</dt><dd data-keep="${key}"><span class="luck">luck decides</span></dd>`).join("")}${SLOTS.filter((s) => !s.pinnable).map((s) => `<dt>${esc(s.trait.toLowerCase())}</dt><dd><span class="luck">luck, always</span></dd>`).join("")}<dt>top and accent colour</dt><dd><span class="luck">luck, always</span></dd></dl>`;
+  const labels: Record<string, string> = { background: "background", ground: "ground colour", head: "head", skin: "skin", eyes: "eyes", mouth: "mouth", hair: "hair", hairColour: "hair colour", top: "top", topColour: "top colour", accessory: "accessory", accent: "accent colour" };
+  const keep = `<dl class="keep" id="keep">${GALLERY_ORDER.map((key) => `<dt>${labels[key]}</dt><dd data-keep="${key}"><span class="luck">luck decides</span></dd>`).join("")}</dl>`;
   const cta = chain
     ? `<div class="price"><span class="small">Today's roll</span><span class="syne" id="price">free</span></div>
 <button class="cta syne" id="roll">Roll for free</button>
 <p class="msg" id="msg" aria-live="polite"></p>
 <button class="cta ghost syne" id="clear" hidden>Clear pins</button>
-<p class="small">One roll per wallet a day. The price doubles with each pin: 0.0005 ETH for one, 0.032 for all seven. ${fmtLeft(left)} to midnight UTC.${badge}</p>`
+<p class="small">One roll per wallet a day. The price doubles with each pin: 0.0005 ETH for one, 1.024 for all twelve. ${fmtLeft(left)} to midnight UTC.${badge}</p>`
     : `<div class="price"><span class="small">Today's roll</span><span class="syne" id="price">free</span></div><a class="cta ghost syne" href="/how">How it works</a><button class="cta ghost syne" id="clear" hidden>Clear pins</button><p class="small">Rolling opens with the contract.</p>`;
   const body = `<div class="page">
 <aside><div class="stick">
 <a class="mark syne" href="/">${SITE}</a>
 <h1 class="syne">One face<br>a day,<br>yours to pin</h1>
-<p class="lead">Every wallet rolls one face a day, free. Pin a background, a top, eyes, hair, a skin tone, a hair colour or a ground colour and pay a little; the rest is luck. Rare things cannot be bought. Any roll can land on a one of one.</p>
+<p class="lead">Every wallet rolls one face a day, free. Pin any part you want, common or uncommon, and pay a little more for each; the rest is luck. Rare things cannot be bought. Any roll can land on a one of one.</p>
 <hr>
 <div style="display:flex;gap:34px"><div><div class="big syne">${num(total)}</div><div class="small">of ${num(MAX_SUPPLY)} rolled</div></div>${chain ? `<div><div class="syne" style="font-weight:700;font-size:26px;line-height:1">${chain.poolLeft}</div><div class="small">1/1 left</div></div><div id="yours" hidden><div class="syne" style="font-weight:700;font-size:26px;line-height:1">0</div><div class="small">yours</div></div>` : ""}</div>
 <div style="display:flex;flex-direction:column;gap:12px">${cta}</div>
@@ -369,8 +371,8 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
 </div></aside>
 <main>
 <section class="builder">
-<div><div class="preview px"><img id="preview" src="/preview.svg?p=ffffffffffffffff" alt="Your pins on a grey stand-in; grey parts are luck's" width="512" height="512"></div>
-<p class="small" style="margin-top:12px">Grey is what luck decides. Colour is what you pin. Head, mouth, accessory, top colour and accent colour are always luck.</p>
+<div><div class="preview px"><img id="preview" src="/preview.svg?p=ffffffffffffffffffffffffffffffff" alt="Your pins on a grey stand-in; grey parts are luck's" width="512" height="512"></div>
+<p class="small" style="margin-top:12px">Grey is what luck decides. Colour is what you pin. Rare and legendary things cannot be pinned; they come from luck or not at all.</p>
 ${keep}</div>
 <div class="galleries">${galleries()}</div>
 </section>
@@ -416,7 +418,7 @@ export function howPage(chain: ChainState | null, epoch: number): string {
 ${topBar()}
 <h2 class="syne">One roll a day, and what you may pin</h2>
 <p><strong>The roll.</strong> Every wallet may roll once per UTC day, in two steps so nobody can peek and retry. <code>commit</code> spends your day, fixes your pins and pays the fee. One block later <code>reveal</code> mixes the hash of the block after your commit with your address and the token number into a 64-bit seed, and the seed decides everything: seven layers, five colours, and whether this roll takes a one of one. The site reveals for you, so you sign once; anyone may reveal for anyone, and a commit nobody reveals just waits. A free roll costs gas and nothing else.</p>
-<p><strong>The pins.</strong> Seven things can be pinned: background, top, eyes, hair or hat, skin tone, hair colour, ground colour. You may pin any number of them, to any common or uncommon item; the pinnable skins are the eleven human tones, all common; the fantasy tones are rare or legendary and come only from luck. Every hair and ground colour can be pinned. The price doubles with every pin: 0.0005 ETH for one, 0.001 for two, up to 0.032 for all seven. 95 percent of the fee goes to the author, 5 percent to the keeper wallet that pays gas for reveals and the treasury's rolls. Rare and legendary items cannot be pinned; they come from luck or not at all.</p>
+<p><strong>The pins.</strong> Twelve things can be pinned: the seven layers (background, top, head, eyes, mouth, accessory, hair or hat) and five colours (skin, hair, ground, top, accent). Layers pin to common or uncommon items only; the pinnable skins are the eleven human tones, all common; the fantasy tones are rare or legendary and come only from luck. Every other colour can be pinned. The price doubles with every pin: 0.0005 ETH for one, 0.001 for two, up to 1.024 for all twelve. 95 percent of the fee goes to the author, 5 percent to the keeper wallet that pays gas for reveals and the treasury's rolls. Rare and legendary items cannot be pinned; they come from luck or not at all.</p>
 <p><strong>The layers.</strong> ${SLOTS.map((s) => `${s.items.length} ${s.trait.toLowerCase()}`).join(", ")}. Every item has a tier: common, uncommon, rare, legendary. The weight tables live in the contract; <a href="/rarity">the rarity page</a> lists each item's odds per roll. Skin, hair colour, top colour, ground and accent colour are drawn on top of that. ${num(combinations())} combinations before the one of ones.</p>
 <p><strong>The one of ones.</strong> ${ONE_OF_ONES.length} full drawings sit in a pool. Any roll takes one with odds of pool left over tokens left: about 1 in ${Math.round(10000 / ONE_OF_ONES.length)} on the first roll, better as the end nears, so on average the whole pool is rolled by the last token. The contract removes a rolled one from the pool; each exists once. <a href="/ones">See what is left.</a></p>
 <p><strong>The treasury.</strong> The author's wallet gets one free roll a day too, with the same luck as everyone. Anyone may trigger it; the site does, at midnight UTC.</p>
@@ -433,7 +435,7 @@ ${topBar()}
 seed = keccak(blockhash(commitBlock + 1), wallet, pins, commitBlock, tokenId) as u64
 draw(i) = mix(seed + i) mod 10000
 for slot in 0..6: item[slot] = walk(WEIGHTS[slot], draw(slot)), or the pin
-skin = walk(SKIN_WEIGHTS, draw(7)), or the pin; hair colour, top colour, ground, accent = draw(8..11) mod count, hair colour and ground or their pins
+skin = walk(SKIN_WEIGHTS, draw(7)), or the pin; hair colour, top colour, ground, accent = draw(8..11) mod count, or their pins
 lucky = draw(12) < pool size * 10000 / tokens left; one = pool[draw(13) mod pool size]</code></pre>
 <p>Everything here is CC0. If you build on it, write to me.</p>
 <p class="small"><a href="/">Back to the roll</a>. Every collection: <a href="https://${PARENT}">${PARENT}</a>.</p>

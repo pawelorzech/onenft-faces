@@ -7,7 +7,7 @@ import {IFaceRenderer} from "./IFaceRenderer.sol";
 
 /// @title OneNFT, one face a day per wallet
 /// @notice Every wallet may roll one face per UTC day, free. A roll may pin up to
-/// any of the pinnable things (background, top, eyes, hair, skin, hair colour, ground)
+/// any of the twelve things (seven layers, skin, hair colour, ground, top colour, accent)
 /// to a common or uncommon item for a fee that doubles with every pin; the rest is luck.
 /// Any roll may land on a 1/1, once each, with odds of pool left over tokens
 /// left, so the pool empties with the supply. The author's wallet gets one free
@@ -26,7 +26,7 @@ contract OneNFT is ERC721, Ownable {
     uint256 public constant EPOCH_SECONDS = 86400;
     uint256 public constant MAX_SUPPLY = 10000;
     uint8 public constant NO_ONE = 255;
-    uint64 public constant NO_PINS = type(uint64).max;
+    uint128 public constant NO_PINS = type(uint128).max;
 
     address public immutable author;
     /// @notice The wallet that pays gas for reveals and treasury rolls; it takes KEEPER_BPS of every fee.
@@ -43,14 +43,14 @@ contract OneNFT is ERC721, Ownable {
 
     struct Face {
         uint64 seed;
-        uint64 pins;
+        uint128 pins;
         uint8 one;
         address renderer;
     }
     struct Commit {
-        uint64 pins;
+        uint128 pins;
         uint64 blockNumber;
-        uint128 paid;
+        uint64 paid;
     }
 
     mapping(uint256 tokenId => Face) public faces;
@@ -59,14 +59,14 @@ contract OneNFT is ERC721, Ownable {
     /// @dev Indices of the 1/1s still unrolled; swap-and-pop on a hit.
     uint8[] public pool;
 
-    event Committed(address indexed wallet, uint64 pins, uint256 blockNumber, uint256 paid);
-    event Rolled(uint256 indexed tokenId, address indexed to, uint64 seed, uint64 pins, uint8 one, uint256 paid);
+    event Committed(address indexed wallet, uint128 pins, uint256 blockNumber, uint256 paid);
+    event Rolled(uint256 indexed tokenId, address indexed to, uint64 seed, uint128 pins, uint8 one, uint256 paid);
     event RendererSet(address indexed renderer);
     event RendererLocked();
 
     error SoldOut();
     error OneRollADay(address wallet, uint256 nextRollAt);
-    error BadPins(uint64 pins);
+    error BadPins(uint128 pins);
     error WrongPrice(uint256 want, uint256 got);
     error PayoutFailed();
     error NothingToReveal(address wallet);
@@ -99,7 +99,7 @@ contract OneNFT is ERC721, Ownable {
         if (!r.pinsOk(NO_PINS) || r.pinCount(NO_PINS) != 0 || r.luckyFor(1, 0, 1) != NO_ONE) revert BadRenderer(renderer_);
         if (bytes(r.tokenURI(1, 1, NO_PINS, NO_ONE)).length < 64) revert BadRenderer(renderer_);
         if (ones > 0 && bytes(r.attributes(1, NO_PINS, uint8(ones - 1))).length < 16) revert BadRenderer(renderer_);
-        uint64 onePin = 0x00ffffffffffffff; // background item 0
+        uint128 onePin = 0x00ffffffffffffffffffffffffffffff; // background item 0
         if (!r.pinsOk(onePin) || r.pinCount(onePin) != 1 || bytes(r.attributes(1, onePin, NO_ONE)).length < 16) revert BadRenderer(renderer_);
     }
 
@@ -118,8 +118,8 @@ contract OneNFT is ERC721, Ownable {
         return lastRollEpoch[wallet] < currentEpoch() && totalSupply + pending < MAX_SUPPLY;
     }
 
-    /// @notice The price doubles with every pin: 0.0005 ETH for one, 0.032 ETH for all seven.
-    function priceOf(uint64 pins) public view returns (uint256) {
+    /// @notice The price doubles with every pin: 0.0005 ETH for one, 1.024 ETH for all twelve.
+    function priceOf(uint128 pins) public view returns (uint256) {
         uint256 n = IFaceRenderer(renderer).pinCount(pins);
         if (n == 0) return 0;
         return 0.0005 ether << (n - 1);
@@ -133,8 +133,8 @@ contract OneNFT is ERC721, Ownable {
 
     /// @notice Spend today's roll: fix the pins, pay the fee, hold a place. Reveal one block later.
     /// The fee splits 95 to the author and 5 to the keeper, in basis points KEEPER_BPS.
-    /// @param pins one byte per pin key, high byte first: background, top, eyes, hair, skin, hair colour, ground, one spare; 255 for none
-    function commit(uint64 pins) external payable {
+    /// @param pins one byte per pin key, high byte first: background, top, head, eyes, mouth, accessory, hair, skin, hair colour, ground, top colour, accent, four spare; 255 for none
+    function commit(uint128 pins) external payable {
         uint256 price = priceOf(pins);
         if (msg.value != price) revert WrongPrice(price, msg.value);
         if (pins != NO_PINS && !IFaceRenderer(renderer).pinsOk(pins)) revert BadPins(pins);
@@ -153,12 +153,12 @@ contract OneNFT is ERC721, Ownable {
         _commit(author, NO_PINS, 0);
     }
 
-    function _commit(address wallet, uint64 pins, uint256 price) internal {
+    function _commit(address wallet, uint128 pins, uint256 price) internal {
         if (totalSupply + pending >= MAX_SUPPLY) revert SoldOut();
         uint256 epoch = currentEpoch();
         if (lastRollEpoch[wallet] >= epoch) revert OneRollADay(wallet, (lastRollEpoch[wallet] + 1) * EPOCH_SECONDS);
         lastRollEpoch[wallet] = epoch;
-        commits[wallet] = Commit(pins, uint64(block.number), uint128(price));
+        commits[wallet] = Commit(pins, uint64(block.number), uint64(price));
         pending++;
         emit Committed(wallet, pins, block.number, price);
     }

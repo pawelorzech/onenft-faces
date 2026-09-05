@@ -42,7 +42,7 @@ contract FaceRendererTest is Test {
         for (uint256 i = from; i < to && i < count; i++) {
             string memory k = string.concat("$[", i.toString(), "]");
             uint64 seed = uint64(parseUint(vm.parseJsonString(json, string.concat(k, ".seed"))));
-            uint64 pins = uint64(parseUint(vm.parseJsonString(json, string.concat(k, ".pins"))));
+            uint128 pins = uint128(parseUint(vm.parseJsonString(json, string.concat(k, ".pins"))));
             uint8 one = uint8(vm.parseJsonUint(json, string.concat(k, ".one")));
             assertEq(keccak256(bytes(r.svg(seed, pins, one))), keccak256(bytes(vm.parseJsonString(json, string.concat(k, ".svg")))), string.concat(k, " svg"));
             assertEq(keccak256(bytes(r.json(1, seed, pins, one))), keccak256(bytes(vm.parseJsonString(json, string.concat(k, ".json")))), string.concat(k, " json"));
@@ -61,7 +61,7 @@ contract FaceRendererTest is Test {
             string memory k = string.concat("$[", i.toString(), "]");
             uint64 seed = uint64(parseUint(vm.parseJsonString(json, string.concat(k, ".seed"))));
             uint8 one = uint8(vm.parseJsonUint(json, string.concat(k, ".one")));
-            assertGt(bytes(r.tokenURI(1, seed, type(uint64).max, one)).length, 100, vm.parseJsonString(json, string.concat(k, ".what")));
+            assertGt(bytes(r.tokenURI(1, seed, type(uint128).max, one)).length, 100, vm.parseJsonString(json, string.concat(k, ".what")));
         }
     }
     function test_EveryIndexRenders_A() public view { coverage(0, 30); }
@@ -85,29 +85,30 @@ contract FaceRendererTest is Test {
     }
 
     function test_PinsAreCheckedAgainstTiersAndCounts() public view {
-        assertTrue(r.pinsOk(type(uint64).max));
-        assertTrue(r.pinsOk(0x00ffffffffffffff)); // background 0, Flat, common
-        assertFalse(r.pinsOk(0xff0fffffffffffff)); // top 15 does not exist
-        assertFalse(r.pinsOk(0xffff0dffffffffff)); // eyes 13 Cyclops, legendary
-        assertTrue(r.pinsOk(0xffffffff02ffffff)); // skin 2 Tan, common
-        assertFalse(r.pinsOk(0xffffffff12ffffff)); // skin 18 Gold, legendary
-        assertTrue(r.pinsOk(0xffffffffff0305ff)); // hair colour 3, ground 5
-        assertFalse(r.pinsOk(0xffffffffff63ffff)); // hair colour 99 does not exist
-        assertFalse(r.pinsOk(0xffffffffffff63ff)); // ground 99 does not exist
-        assertFalse(r.pinsOk(0xffffffffffffff00)); // the spare byte set
-        assertEq(r.pinCount(type(uint64).max), 0);
-        assertEq(r.pinCount(0x0001ffffffffffff), 2);
-        assertEq(r.pinCount(0x00010203ffffffff), 4);
+        assertTrue(r.pinsOk(type(uint128).max));
+        assertTrue(r.pinsOk(0x00ffffffffffffffffffffffffffffff)); // background 0, Flat, common
+        assertFalse(r.pinsOk(0xff0fffffffffffffffffffffffffffff)); // top 15 does not exist
+        assertFalse(r.pinsOk(0xffffff0dffffffffffffffffffffffff)); // eyes 13 Cyclops, legendary
+        assertTrue(r.pinsOk(0xffff02ff0203ffffffffffffffffffff)); // head 2, mouth 2, accessory 3
+        assertFalse(r.pinsOk(0xffff06ffffffffffffffffffffffffff)); // head 6 Tall, rare
+        assertTrue(r.pinsOk(0xffffffffffffff02ffffffffffffffff)); // skin 2 Tan, common
+        assertFalse(r.pinsOk(0xffffffffffffff12ffffffffffffffff)); // skin 18 Gold, legendary
+        assertTrue(r.pinsOk(0xffffffffffffffff03050102ffffffff)); // hair colour 3, ground 5, top colour 1, accent 2
+        assertFalse(r.pinsOk(0xffffffffffffffff63ffffffffffffff)); // hair colour 99 does not exist
+        assertFalse(r.pinsOk(0xffffffffffffffffffffffffff00ffff)); // a spare byte set
+        assertEq(r.pinCount(type(uint128).max), 0);
+        assertEq(r.pinCount(0x0001ffffffffffffffffffffffffffff), 2);
+        assertEq(r.pinCount(0x00010203ffffffffffffffffffffffff), 4);
     }
 
     function testFuzz_EverySeedRenders(uint64 seed) public view {
-        string memory s = r.svg(seed, type(uint64).max, 255);
+        string memory s = r.svg(seed, type(uint128).max, 255);
         assertGt(bytes(s).length, 1000);
     }
 
     function test_TokenUriGas() public view {
         uint256 g = gasleft();
-        r.tokenURI(1, 12345, type(uint64).max, 255);
+        r.tokenURI(1, 12345, type(uint128).max, 255);
         uint256 used = g - gasleft();
         assertLt(used, 10_000_000, "tokenURI gas");
     }

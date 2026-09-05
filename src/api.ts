@@ -57,7 +57,7 @@ export function specJson() {
     tierWeights: TIER_WEIGHT,
     slots: SLOTS.map((s, k) => ({ slot: s.slot, trait: s.trait, pinnable: s.pinnable, group: s.group, items: s.items.map((it, i) => ({ name: it.name, tier: it.tier, weight: WEIGHTS[k][i] })) })),
     pinKeys: PIN_KEYS,
-    pinsEncoding: "uint64, one byte per pin key high byte first, 0xff for none, spare bytes 0xff",
+    pinsEncoding: "uint128, one byte per pin key high byte first, 0xff for none, spare bytes 0xff",
     pinPricesWei: PIN_PRICES_WEI.map((p) => p.toString()),
     skins: SKINS.map((s, i) => ({ ...s, weight: SKIN_WEIGHTS[i] })),
     hairColours: HAIRS, topColours: TOPCOLORS, grounds: GROUNDS, accents: ACCENTS,

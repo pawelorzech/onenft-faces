@@ -80,16 +80,17 @@ export type Traits = { items: number[]; skin: number; hair: number; top: number;
 /** Pins by slot name, pinnable slots only, common or uncommon items only. */
 export type Pins = Partial<Record<string, number>>;
 export const PINNABLE = SLOTS.map((s, i) => (s.pinnable ? i : -1)).filter((i) => i >= 0);
-/** Pin keys in byte order: the pinnable slots, then skin, hair colour, ground. Eight bytes in a uint64, 0xff for none. */
-export const PIN_KEYS = [...PINNABLE.map((k) => SLOTS[k].slot), "skin", "hairColour", "ground"];
+/** Pin keys in byte order: the seven slots, then skin, hair colour, ground, top colour, accent. Sixteen bytes in a uint128, 0xff for none. */
+export const PIN_KEYS = [...PINNABLE.map((k) => SLOTS[k].slot), "skin", "hairColour", "ground", "topColour", "accent"];
+export const PIN_BYTES = 16;
 export const NO_PIN = 0xff;
-export const NO_PINS = 0xffffffffffffffffn;
-/** No cap beyond the keys themselves: seven pins is a fully chosen face. */
-export const MAX_PINS = 7;
+export const NO_PINS = (1n << 128n) - 1n;
+/** No cap beyond the keys themselves: twelve pins is a fully chosen face. */
+export const MAX_PINS = PIN_KEYS.length;
 /** The 1/1 odds adapt: any roll hits the pool with probability poolLeft / tokensLeft, so on average every 1/1 is rolled by the end. */
 export const MAX_SUPPLY = 10000;
-/** The price doubles with every pin: 0.0005 ETH for one, 0.032 ETH for all seven. */
-export const PIN_PRICES_WEI = [0n, ...Array.from({ length: 7 }, (_, i) => 500_000_000_000_000n << BigInt(i))];
+/** The price doubles with every pin: 0.0005 ETH for one, 1.024 ETH for all twelve. */
+export const PIN_PRICES_WEI = [0n, ...Array.from({ length: 12 }, (_, i) => 500_000_000_000_000n << BigInt(i))];
 
 export function pinOk(slot: number, item: number): boolean {
   const s = SLOTS[slot];
@@ -106,19 +107,21 @@ export function pinKeyOk(key: string, value: number): boolean {
   if (key === "skin") return skinPinOk(value);
   if (key === "hairColour") return value < HAIRS.length;
   if (key === "ground") return value < GROUNDS.length;
+  if (key === "topColour") return value < TOPCOLORS.length;
+  if (key === "accent") return value < ACCENTS.length;
   const k = SLOTS.findIndex((s) => s.slot === key);
   return k >= 0 && pinOk(k, value);
 }
-/** uint64: one byte per PIN_KEYS entry, high byte first, 0xff for none. */
+/** uint128: one byte per PIN_KEYS entry, high byte first, 0xff for none. */
 export function packPins(pins: Pins): bigint {
   let v = 0n;
-  for (let k = 0; k < 8; k++) { const key = PIN_KEYS[k]; const p = key === undefined ? undefined : pins[key]; v |= BigInt((p === undefined ? NO_PIN : p) & 0xff) << BigInt(8 * (7 - k)); }
+  for (let k = 0; k < PIN_BYTES; k++) { const key = PIN_KEYS[k]; const p = key === undefined ? undefined : pins[key]; v |= BigInt((p === undefined ? NO_PIN : p) & 0xff) << BigInt(8 * (PIN_BYTES - 1 - k)); }
   return v;
 }
 export function unpackPins(v: bigint | number): Pins {
   const out: Pins = {};
   const b = BigInt(v);
-  PIN_KEYS.forEach((key, k) => { const x = Number((b >> BigInt(8 * (7 - k))) & 0xffn); if (x !== NO_PIN) out[key] = x; });
+  PIN_KEYS.forEach((key, k) => { const x = Number((b >> BigInt(8 * (PIN_BYTES - 1 - k))) & 0xffn); if (x !== NO_PIN) out[key] = x; });
   return out;
 }
 export const pinCount = (pins: Pins) => Object.keys(pins).length;
@@ -149,6 +152,8 @@ export function traitsOf(seed: bigint, pins: Pins = {}, one?: number): Traits {
   const t: Traits = { items, skin, hair: d[S + 1] % HAIRS.length, top: d[S + 2] % TOPCOLORS.length, ground: d[S + 3] % GROUNDS.length, accent: d[S + 4] % ACCENTS.length };
   if (pins.hairColour !== undefined) { if (pins.hairColour >= HAIRS.length) throw new Error("no such hair colour"); t.hair = pins.hairColour; }
   if (pins.ground !== undefined) { if (pins.ground >= GROUNDS.length) throw new Error("no such ground"); t.ground = pins.ground; }
+  if (pins.topColour !== undefined) { if (pins.topColour >= TOPCOLORS.length) throw new Error("no such top colour"); t.top = pins.topColour; }
+  if (pins.accent !== undefined) { if (pins.accent >= ACCENTS.length) throw new Error("no such accent"); t.accent = pins.accent; }
   if (one !== undefined) t.one = one;
   return t;
 }
@@ -270,6 +275,16 @@ export function hairColourSvg(i: number, px = 96): string {
   t.items[k] = SLOTS[k].items.findIndex((it) => it.name === "Short");
   return svgOf(t, px);
 }
+/** One top colour and one accent on the neutral base, for the galleries. */
+export function topColourSvg(i: number, px = 96): string {
+  return svgOf({ ...BASE_TRAITS, top: i }, px);
+}
+export function accentSvg(i: number, px = 96): string {
+  const t: Traits = { ...BASE_TRAITS, items: BASE_TRAITS.items.slice(), accent: i };
+  const k = SLOTS.findIndex((x) => x.slot === "hair");
+  t.items[k] = SLOTS[k].items.findIndex((it) => it.name === "Cap");
+  return svgOf(t, px);
+}
 /** One ground colour on the neutral base, for the gallery. */
 export function groundSvg(i: number, px = 96): string {
   return svgOf({ ...BASE_TRAITS, ground: i }, px);
@@ -293,6 +308,9 @@ export function previewSvg(pins: Pins, px = 512): string {
   if (has("hairColour")) { t.hair = pins.hairColour!; if (!has("hair")) t.items[SLOTS.findIndex((x) => x.slot === "hair")] = SLOTS[SLOTS.findIndex((x) => x.slot === "hair")].items.findIndex((i) => i.name === "Short"); }
   if (has("top")) t.top = 3;
   if (has("eyes")) t.accent = 0;
+  if (has("topColour")) t.top = pins.topColour!;
+  if (has("accent")) t.accent = pins.accent!;
+  if (has("head") || has("mouth") || has("accessory")) t.skin = 1;
   return svgOf(t, px);
 }
 

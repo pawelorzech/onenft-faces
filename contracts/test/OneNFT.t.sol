@@ -11,7 +11,7 @@ contract OneNFTTest is Test {
     using Strings for uint256;
 
     uint256 constant EB = 86400;
-    uint64 constant NONE = type(uint64).max;
+    uint128 constant NONE = type(uint128).max;
     address author = address(0xA11CE);
     address alice = address(0xA1);
     address bob = address(0xB0B);
@@ -33,7 +33,7 @@ contract OneNFTTest is Test {
         vm.deal(bob, 1 ether);
     }
 
-    function rollFor(address who, uint64 pins, uint256 value) internal returns (uint256 id) {
+    function rollFor(address who, uint128 pins, uint256 value) internal returns (uint256 id) {
         vm.prank(who);
         nft.commit{value: value}(pins);
         vm.roll(block.number + 1);
@@ -84,7 +84,7 @@ contract OneNFTTest is Test {
     }
 
     function test_PinnedCommitCostsByCountAndPaysTheAuthor() public {
-        uint64 pins = 0x0001ffffffffffff; // background 0, top 1
+        uint128 pins = 0x0001ffffffffffffffffffffffffffff; // background 0, top 1
         assertEq(nft.priceOf(pins), 0.001 ether);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(OneNFT.WrongPrice.selector, 0.001 ether, 0));
@@ -94,25 +94,25 @@ contract OneNFTTest is Test {
         uint256 id = rollFor(alice, pins, 0.001 ether);
         assertEq(author.balance - before, 0.00095 ether);
         assertEq(keeper.balance - kBefore, 0.00005 ether);
-        (, uint64 stored,,) = nft.faces(id);
+        (, uint128 stored,,) = nft.faces(id);
         assertEq(stored, pins);
-        assertEq(nft.priceOf(0x00ffffffffffffff), 0.0005 ether);
-        assertEq(nft.priceOf(0x000102ffffffffff), 0.002 ether);
-        assertEq(nft.priceOf(0x00010203ffffffff), 0.004 ether);
-        assertEq(nft.priceOf(0x0001020300ffffff), 0.008 ether); // five pins
-        assertEq(nft.priceOf(0x00010203000102ff), 0.032 ether); // all seven
-        uint256 id2 = rollFor(bob, 0xffffffff020305ff, 0.002 ether); // skin Tan, hair colour 3, ground 5
-        (, uint64 sk,,) = nft.faces(id2);
-        assertEq(sk, 0xffffffff020305ff);
+        assertEq(nft.priceOf(0x00ffffffffffffffffffffffffffffff), 0.0005 ether);
+        assertEq(nft.priceOf(0x000102ffffffffffffffffffffffffff), 0.002 ether);
+        assertEq(nft.priceOf(0x00010203ffffffffffffffffffffffff), 0.004 ether);
+        assertEq(nft.priceOf(0x0001020300ffffffffffffffffffffff), 0.008 ether); // five pins
+        assertEq(nft.priceOf(0x000100000000010000000000ffffffff), 1.024 ether); // all twelve
+        uint256 id2 = rollFor(bob, 0xffffffffffffff020305ffffffffffff, 0.002 ether); // skin Tan, hair colour 3, ground 5
+        (, uint128 sk,,) = nft.faces(id2);
+        assertEq(sk, 0xffffffffffffff020305ffffffffffff);
     }
 
     function test_PinOnRareItemOrUnknownIndexReverts() public {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(OneNFT.BadPins.selector, uint64(0xffff0dffffffffff)));
-        nft.commit{value: 0.0005 ether}(0xffff0dffffffffff);
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.BadPins.selector, uint128(0xffffff0dffffffffffffffffffffffff)));
+        nft.commit{value: 0.0005 ether}(0xffffff0dffffffffffffffffffffffff); // eyes 13 Cyclops, legendary
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(OneNFT.BadPins.selector, uint64(0xff63ffffffffffff)));
-        nft.commit{value: 0.0005 ether}(0xff63ffffffffffff);
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.BadPins.selector, uint128(0xff63ffffffffffffffffffffffffffff)));
+        nft.commit{value: 0.0005 ether}(0xff63ffffffffffffffffffffffffffff);
     }
 
     function test_TreasuryRollIsPermissionlessAndDaily() public {

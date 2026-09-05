@@ -266,9 +266,9 @@ export const ONE_OF_ONES: OneOfOne[] = [
 export const SLOTS: Slot[] = [
   { slot: "background", trait: "Background", pinnable: true, group: "bg", items: BACKGROUNDS },
   { slot: "top", trait: "Top", pinnable: true, group: "top", items: TOPS },
-  { slot: "head", trait: "Head", pinnable: false, group: "skin", items: HEADS },
+  { slot: "head", trait: "Head", pinnable: true, group: "skin", items: HEADS },
   { slot: "eyes", trait: "Eyes", pinnable: true, group: "eyes", items: EYES },
-  { slot: "mouth", trait: "Mouth", pinnable: false, group: "mouth", items: MOUTHS },
-  { slot: "accessory", trait: "Accessory", pinnable: false, group: "acc", items: ACCESSORIES },
+  { slot: "mouth", trait: "Mouth", pinnable: true, group: "mouth", items: MOUTHS },
+  { slot: "accessory", trait: "Accessory", pinnable: true, group: "acc", items: ACCESSORIES },
   { slot: "hair", trait: "Hair", pinnable: true, group: "hair", items: HAIR },
 ];

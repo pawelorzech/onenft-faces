@@ -24,12 +24,13 @@ test("mix64 matches the known splitmix64 finalizer", () => {
 test("a seed always gives the same traits; pins replace pinnable slots only", () => {
   const a = traitsOf(42n), b = traitsOf(42n);
   expect(a).toEqual(b);
-  const p = traitsOf(42n, { hair: 1, background: 0 });
+  const p = traitsOf(42n, { hair: 1, background: 0, head: 2, mouth: 3 });
   expect(p.items[SLOTS.findIndex((s) => s.slot === "hair")]).toBe(1);
   expect(p.items[0]).toBe(0);
+  expect(p.items[SLOTS.findIndex((s) => s.slot === "head")]).toBe(2);
   expect(p.skin).toBe(a.skin);
-  expect(() => traitsOf(42n, { head: 0 })).toThrow();
-  expect(() => traitsOf(42n, { mouth: 0 })).toThrow();
+  expect(() => traitsOf(42n, { head: 6 })).toThrow(); // Tall is rare
+  expect(() => traitsOf(42n, { nose: 0 } as any)).not.toThrow();
 });
 
 test("rare and legendary items cannot be pinned", () => {
@@ -37,14 +38,14 @@ test("rare and legendary items cannot be pinned", () => {
   expect(pinOk(0, 999)).toBe(false);
 });
 
-test("pins pack to one byte per key: four slots, skin, hair colour, ground, one spare", () => {
-  expect(PINNABLE.length).toBe(4);
-  expect(packPins({})).toBe(0xffffffffffffffffn);
-  const pins = { background: 3, hair: 7, skin: 2, hairColour: 4, ground: 9 };
+test("pins pack to one byte per key: seven slots, five colours, four spare", () => {
+  expect(PINNABLE.length).toBe(7);
+  expect(packPins({})).toBe((1n << 128n) - 1n);
+  const pins = { background: 3, hair: 7, skin: 2, hairColour: 4, ground: 9, mouth: 1, accent: 2 };
   expect(unpackPins(packPins(pins))).toEqual(pins);
-  expect(packPins({ background: 3 })).toBe(0x03ffffffffffffffn);
-  expect(packPins({ skin: 1 })).toBe(0xffffffff01ffffffn);
-  expect(packPins({ hairColour: 2, ground: 5 })).toBe(0xffffffffff0205ffn);
+  expect(packPins({ background: 3 })).toBe(0x03ffffffffffffffffffffffffffffffn);
+  expect(packPins({ skin: 1 })).toBe(0xffffffffffffff01ffffffffffffffffn);
+  expect(packPins({ hairColour: 2, ground: 5 })).toBe(0xffffffffffffffff0205ffffffffffffn);
   const t = traitsOf(42n, { hairColour: 2, ground: 5 });
   expect(t.hair).toBe(2);
   expect(t.ground).toBe(5);

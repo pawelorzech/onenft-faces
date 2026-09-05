@@ -1,5 +1,5 @@
 import { SLOTS } from "./sprites.ts";
-import { svgOf, itemSvg, skinSvg, hairColourSvg, groundSvg, previewSvg, unpackPins, faceOfDay, pinKeyOk, SKINS, HAIRS, GROUNDS } from "./faces.ts";
+import { svgOf, itemSvg, skinSvg, hairColourSvg, groundSvg, topColourSvg, accentSvg, previewSvg, unpackPins, faceOfDay, pinKeyOk, SKINS, HAIRS, GROUNDS, TOPCOLORS, ACCENTS } from "./faces.ts";
 import { chainState, contractEnabled, startRollScan, canRoll, CONTRACT, CHAIN_ID, EPOCH_SECONDS } from "./contract.ts";
 import { homePage, facePage, howPage, notFound, traitsOfRecord } from "./site.ts";
 import { rarityPage, onesPage, holderPage, assetsPage } from "./pages.ts";
@@ -48,14 +48,18 @@ Bun.serve({
     if (path === "/today.svg") return svg(svgOf(faceOfDay(epoch)), false);
     if (path === "/today.png") return png(cardPng(`day${epoch}`, "faces", "roll yours", faceOfDay(epoch), true), false);
     if (path === "/preview.svg") {
-      const p = (url.searchParams.get("p") ?? "ffffffffffffffff").toLowerCase();
-      if (!/^[0-9a-f]{16}$/.test(p)) return new Response("bad pins", { status: 400 });
+      const p = (url.searchParams.get("p") ?? "f".repeat(32)).toLowerCase();
+      if (!/^[0-9a-f]{32}$/.test(p)) return new Response("bad pins", { status: 400 });
       const pins = unpackPins(BigInt("0x" + p));
       for (const [key, item] of Object.entries(pins)) if (!pinKeyOk(key, item!)) return new Response("bad pin", { status: 400 });
       return svg(previewSvg(pins), true);
     }
     const hc = path.match(/^\/haircolour\/(\d{1,2})\.svg$/);
     if (hc) return HAIRS[Number(hc[1])] ? svg(hairColourSvg(Number(hc[1]), 96), true) : new Response("no such colour", { status: 404 });
+    const tc = path.match(/^\/topcolour\/(\d{1,2})\.svg$/);
+    if (tc) return TOPCOLORS[Number(tc[1])] ? svg(topColourSvg(Number(tc[1]), 96), true) : new Response("no such colour", { status: 404 });
+    const ac = path.match(/^\/accent\/(\d{1,2})\.svg$/);
+    if (ac) return ACCENTS[Number(ac[1])] ? svg(accentSvg(Number(ac[1]), 96), true) : new Response("no such colour", { status: 404 });
     const gr = path.match(/^\/ground\/(\d{1,2})\.svg$/);
     if (gr) return GROUNDS[Number(gr[1])] ? svg(groundSvg(Number(gr[1]), 96), true) : new Response("no such ground", { status: 404 });
     const skin = path.match(/^\/skin\/(\d{1,2})\.svg$/);

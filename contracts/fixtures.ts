@@ -48,7 +48,7 @@ await Bun.write(new URL("./test/fixtures/faces_data.json", import.meta.url).path
 // Fixtures: seeds with no pins, with pins, and forced 1/1s.
 const cases: { seed: bigint; pins: Pins; one?: number }[] = [];
 for (let i = 1; i <= 12; i++) cases.push({ seed: BigInt(i) * 0x9e3779b97f4a7c15n % (1n << 64n), pins: {} });
-cases.push({ seed: 77n, pins: { background: 4 } }, { seed: 78n, pins: { hair: 12, eyes: 8 } }, { seed: 79n, pins: { background: 0, top: 2, eyes: 1 } }, { seed: 80n, pins: { skin: 2, hair: 5 } }, { seed: 81n, pins: { hairColour: 3, ground: 7 } }, { seed: 82n, pins: { background: 1, eyes: 2, skin: 0, ground: 12 } });
+cases.push({ seed: 77n, pins: { background: 4 } }, { seed: 78n, pins: { hair: 12, eyes: 8 } }, { seed: 79n, pins: { background: 0, top: 2, eyes: 1 } }, { seed: 80n, pins: { skin: 2, hair: 5 } }, { seed: 81n, pins: { hairColour: 3, ground: 7 } }, { seed: 82n, pins: { background: 1, eyes: 2, skin: 0, ground: 12 } }, { seed: 83n, pins: { head: 1, mouth: 2, accessory: 3, topColour: 4, accent: 5 } }, { seed: 84n, pins: { background: 0, top: 0, head: 0, eyes: 0, mouth: 0, accessory: 0, hair: 1, skin: 0, hairColour: 0, ground: 0, topColour: 0, accent: 0 } });
 for (let i = 0; i < ONE_OF_ONES.length; i++) cases.push({ seed: 1000n + BigInt(i), pins: {}, one: i });
 // Find a naturally lucky seed so the contract path is covered too.
 let lucky = 0n; for (let s = 1n; s < 200000n; s++) if (luckyOf(s, ONE_OF_ONES.length, 10000) !== undefined) { lucky = s; break; }
