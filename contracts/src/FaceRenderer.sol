@@ -317,7 +317,7 @@ contract FaceRenderer is IFaceRenderer {
         p = L.accents + 1 + 9 * t.accent;
         for (uint256 i = 0; i < 3; i++) pal[16 + i] = rgb(m, p + 3 * i);
         if (t.one != NO_PIN) {
-            p = L.onesAt + 1 + 18 * t.one;
+            p = L.onesAt + 1 + 18 * uint256(t.one);
             for (uint256 i = 0; i < 6; i++) pal[19 + i] = rgb(m, p + 3 * i);
         }
     }
