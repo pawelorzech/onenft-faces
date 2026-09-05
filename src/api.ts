@@ -1,7 +1,7 @@
 /** JSON for other people's code and the spec. Everything here is derived; nothing is stored. */
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
 import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, attributesOf, rarityOf, unpackPins, PIN_PRICES_WEI, PIN_KEYS, MAX_PINS, TIER_WEIGHT } from "./faces.ts";
-import { SITE, traitsOfRecord, isAuthor, opensea, explorer, MAX_SUPPLY, pinRule, ethOf, type Names, NO_NAMES } from "./site.ts";
+import { SITE, traitsOfRecord, isAuthor, opensea, explorer, MAX_SUPPLY, pinRule, ethOf, type Names, NO_NAMES, IMG_Q } from "./site.ts";
 import { unrevealed, type ChainState, type ChainStatus, type FaceRecord } from "./contract.ts";
 import type { RevealResult } from "./autoclaim.ts";
 import type { Address } from "viem";
@@ -28,9 +28,9 @@ export function faceJson(f: FaceRecord, chain: ChainState, names: Names = NO_NAM
     /** The current holder is the author's wallet. Whether the author rolled it is `roll.treasury`. */
     treasury: owner ? isAuthor(chain, owner) : false,
     roll: roll ? { to: roll.to, treasury: isAuthor(chain, roll.to), tx: roll.tx, block: Number(roll.block), at: roll.at, paidWei: roll.paid.toString(), explorer: `${explorer(chain.chainId)}/tx/${roll.tx}` } : null,
-    image: `https://${SITE}/face/${f.id}.svg`,
-    png: `https://${SITE}/face/${f.id}-1024.png`,
-    card: `https://${SITE}/face/${f.id}.png`,
+    image: `https://${SITE}/face/${f.id}.svg${IMG_Q}`,
+    png: `https://${SITE}/face/${f.id}-1024.png${IMG_Q}`,
+    card: `https://${SITE}/face/${f.id}.png${IMG_Q}`,
     url: `https://${SITE}/face/${f.id}`,
     opensea: opensea(chain, f.id),
     chain: chainBlock(status),

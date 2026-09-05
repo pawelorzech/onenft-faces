@@ -20,6 +20,14 @@ export const NAME = "Faces";
 export const REPO = "https://github.com/pawelorzech/onenft-faces";
 export const PARENT = "onenft.click";
 export const MAX_SUPPLY = 10000;
+/**
+ * A tag of the contract in every face image URL. Face images are immutable and
+ * cached for a year, and a second contract numbers its faces from 1 again, so
+ * without the tag a browser would show the first contract's face 1 for the
+ * second's. The server ignores the query; the tag only keeps caches apart.
+ */
+export const IMG_V = (process.env.CONTRACT_ADDRESS ?? "").slice(2, 10).toLowerCase();
+export const IMG_Q = IMG_V ? `?c=${IMG_V}` : "";
 /** keccak("reveal(address)")[:4], for a reveal sent from the roller's own wallet. */
 export const REVEAL_SELECTOR = "0xc392cf41";
 
@@ -407,8 +415,8 @@ export function sizePicker(): string {
 }
 /** The download bar under one face. SVG is the file itself; PNG without JavaScript is a 1024 pixel PNG the server draws; JPEG needs JavaScript. */
 export function downloadBar(id: number, bg: string): string {
-  const d = `data-id="${id}" data-unit="face" data-src="/face/${id}.svg" data-bg="${bg}"`;
-  return `<div class="dl"><span class="lab">Download face ${id}</span><a class="btn" href="/face/${id}.svg" download="${FILE_PREFIX}-face-${id}.svg" aria-label="SVG of face ${id}">SVG</a><a class="btn" href="/face/${id}-1024.png" download="${FILE_PREFIX}-face-${id}-1024.png" data-dl="png" ${d} aria-label="PNG of face ${id}">PNG</a><a class="btn" href="/face/${id}-1024.png" data-dl="jpeg" ${d} hidden data-js aria-label="JPEG of face ${id}">JPEG</a><noscript><span class="small">JPEG needs JavaScript; the PNG link saves a 1024 pixel PNG.</span></noscript></div>`;
+  const d = `data-id="${id}" data-unit="face" data-src="/face/${id}.svg${IMG_Q}" data-bg="${bg}"`;
+  return `<div class="dl"><span class="lab">Download face ${id}</span><a class="btn" href="/face/${id}.svg${IMG_Q}" download="${FILE_PREFIX}-face-${id}.svg" aria-label="SVG of face ${id}">SVG</a><a class="btn" href="/face/${id}-1024.png${IMG_Q}" download="${FILE_PREFIX}-face-${id}-1024.png" data-dl="png" ${d} aria-label="PNG of face ${id}">PNG</a><a class="btn" href="/face/${id}-1024.png${IMG_Q}" data-dl="jpeg" ${d} hidden data-js aria-label="JPEG of face ${id}">JPEG</a><noscript><span class="small">JPEG needs JavaScript; the PNG link saves a 1024 pixel PNG.</span></noscript></div>`;
 }
 
 export function connectScript(base = "/", entry = false): string {
@@ -691,7 +699,7 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
       const who = rolledBy(chain, id, names) || heldBy(chain, id, names);
       const pinsN = Object.keys(unpackPins(f.pins)).length;
       const r = rarityOf(ft);
-      rows.push(`<a class="row" href="/face/${id}"${owner ? ` data-owner="${owner.toLowerCase()}"` : ""}><img class="px" src="/face/${id}.svg" alt="" loading="lazy" width="92" height="92"><span><span class="n syne">#${id}</span>${tierTag(r)}<br><span class="small">${who}${pinsN ? `, ${pinsN} ${plural(pinsN, "pin", "pins")}` : ""}${f.one !== 255 ? ", one of one" : ""}</span></span></a>`);
+      rows.push(`<a class="row" href="/face/${id}"${owner ? ` data-owner="${owner.toLowerCase()}"` : ""}><img class="px" src="/face/${id}.svg${IMG_Q}" alt="" loading="lazy" width="92" height="92"><span><span class="n syne">#${id}</span>${tierTag(r)}<br><span class="small">${who}${pinsN ? `, ${pinsN} ${plural(pinsN, "pin", "pins")}` : ""}${f.one !== 255 ? ", one of one" : ""}</span></span></a>`);
     }
   }
   const badge = chain && chain.chainId !== 8453 ? ` <span class="testnet">${chainName(chain.chainId)} testnet</span>` : "";
@@ -757,7 +765,7 @@ export function facePage(id: number, f: FaceRecord, chain: ChainState, names: Na
   const rolled = rolledBy(chain, id, names, true);
   const url = `https://${SITE}/face/${id}`;
   const text = encodeURIComponent(`Face #${id} of ${SITE}`);
-  const snippet = esc(`<a href="${url}"><img src="https://${SITE}/face/${id}.svg" width="256" height="256" alt="Face #${id} of faces.onenft.click" style="image-rendering:pixelated"></a>`);
+  const snippet = esc(`<a href="${url}"><img src="https://${SITE}/face/${id}.svg${IMG_Q}" width="256" height="256" alt="Face #${id} of faces.onenft.click" style="image-rendering:pixelated"></a>`);
   const body = `<main class="single" id="main">
 ${topBar(`Face #${id}`)}
 ${staleNote(status)}
@@ -769,12 +777,12 @@ ${traitList(t)}
 <p class="small" style="line-height:1.7">Seed ${f.seed.toString()}. Token ${id} of <a href="${explorer(chain.chainId)}/address/${chain.address}">${shortAddr(chain.address)}</a> on ${chainName(chain.chainId)}. The image and its rules live in the contract.</p>
 ${downloadBar(id, p.bg)}
 <nav class="nav" aria-label="Faces">${id > 1 ? `<a href="/face/${id - 1}">previous</a>` : ""}${id < chain.totalSupply ? `<a href="/face/${id + 1}">next</a>` : ""}<a href="/">roll yours</a></nav>
-<nav class="nav small" aria-label="Links"><a href="${opensea(chain, id)}">OpenSea</a><a href="${explorer(chain.chainId)}/nft/${chain.address}/${id}">Basescan</a><a href="/face/${id}.png">Link card</a><a href="/api/face/${id}">JSON</a></nav>
+<nav class="nav small" aria-label="Links"><a href="${opensea(chain, id)}">OpenSea</a><a href="${explorer(chain.chainId)}/nft/${chain.address}/${id}">Basescan</a><a href="/face/${id}.png${IMG_Q}">Link card</a><a href="/api/face/${id}">JSON</a></nav>
 <nav class="share" aria-label="Share"><a href="https://warpcast.com/~/compose?text=${text}&embeds[]=${encodeURIComponent(url)}">Share on Farcaster</a><a href="https://x.com/intent/post?text=${text}&url=${encodeURIComponent(url)}">Share on X</a></nav>
 <details><summary class="small">Put this face on your page</summary><pre class="snip">${snippet}</pre><p class="small">CC0. No credit needed.</p></details>
 </main>
 ${downloadScript()}`;
-  return layout(`Face #${id} | ${SITE}`, p, body, `/face/${id}.png`, `/face/${id}`);
+  return layout(`Face #${id} | ${SITE}`, p, body, `/face/${id}.png${IMG_Q}`, `/face/${id}`);
 }
 
 export function howPage(chain: ChainState | null, epoch: number): string {

@@ -1,7 +1,7 @@
 /** Inner pages: rarity, the 1/1 gallery, holders, your wallet, assets. */
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
 import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, svgOf, groundOf, pinOk, skinPinOk, combinations, rarityOf, unpackPins, BASE_TRAITS, type Traits } from "./faces.ts";
-import { SITE, REPO, PARENT, FILE_PREFIX, layout, topBar, esc, num, plural, label, isAuthor, tierTag, pageTraits, traitsOfRecord, stripSize, explorer, chainName, openseaCollection, opensea, shortAddr, MAX_SUPPLY, staleNote, whoBlock, sizePicker, downloadBar, connectScript, downloadScript, nameHeading, traitList, heldBy, rolledBy, dateOf, eth, type Names, NO_NAMES } from "./site.ts";
+import { SITE, REPO, PARENT, FILE_PREFIX, layout, topBar, esc, num, plural, label, isAuthor, tierTag, pageTraits, traitsOfRecord, stripSize, explorer, chainName, openseaCollection, opensea, shortAddr, MAX_SUPPLY, staleNote, whoBlock, sizePicker, downloadBar, connectScript, downloadScript, nameHeading, traitList, heldBy, rolledBy, dateOf, eth, type Names, NO_NAMES, IMG_Q } from "./site.ts";
 import type { ChainState, ChainStatus } from "./contract.ts";
 import type { Address } from "viem";
 
@@ -76,7 +76,7 @@ export function holderPage(who: Address, handle: string, chain: ChainState, name
     const pinsN = Object.keys(unpackPins(f.pins)).length;
     const links = [roll ? `<a href="${explorer(chain.chainId)}/tx/${roll.tx}">Transaction</a>` : "", `<a href="${opensea(chain, id)}">OpenSea</a>`, `<a href="/face/${id}">Face page</a>`].filter(Boolean).join(", ");
     return `<div class="tok" id="face-${id}">
-<a href="/face/${id}"><img class="px" src="/face/${id}.svg" width="256" height="256" alt="Face ${id}" loading="lazy"></a>
+<a href="/face/${id}"><img class="px" src="/face/${id}.svg${IMG_Q}" width="256" height="256" alt="Face ${id}" loading="lazy"></a>
 <div class="meta">
 <div class="num syne">#${id}${tierTag(rarityOf(t))}</div>
 <p class="small" style="margin:0">${roll ? `${rolledBy(chain, id, names) || "rolled"}, ${dateOf(Math.floor(roll.at / 86400))}${roll.paid ? `, pin fee ${eth(roll.paid)}` : ""}` : pinsN ? `${pinsN} ${plural(pinsN, "pin", "pins")}` : "no pins"}${f.one !== 255 ? ", one of one" : ""}</p>
