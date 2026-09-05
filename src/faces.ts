@@ -226,3 +226,38 @@ export function combinations(): bigint {
   for (const s of SLOTS) n *= BigInt(s.items.length);
   return n * BigInt(SKINS.length * HAIRS.length * TOPCOLORS.length * GROUNDS.length * ACCENTS.length);
 }
+
+// ---- site helpers: previews and thumbnails ----
+
+/** A neutral base every thumbnail and preview builds on. */
+export const BASE_TRAITS: Traits = { items: SLOTS.map((s) => s.items.findIndex((i) => i.name === (s.slot === "head" ? "Round" : s.slot === "eyes" ? "Dots" : s.slot === "mouth" ? "Flat" : s.slot === "top" ? "Tee" : s.slot === "background" ? "Flat" : s.slot === "hair" ? "Bald" : "None"))), skin: 1, hair: 1, top: 3, ground: 10, accent: 0 };
+
+/** One item on the neutral base, for the galleries. */
+export function itemSvg(slot: number, item: number, px = 96): string {
+  const t: Traits = { ...BASE_TRAITS, items: BASE_TRAITS.items.slice() };
+  t.items[slot] = item;
+  return svgOf(t, px);
+}
+
+/** Pinned items in colour on a grey mannequin: what you keep, and what luck decides. */
+export function previewSvg(pins: Pins, px = 512): string {
+  const t: Traits = { ...BASE_TRAITS, items: BASE_TRAITS.items.slice(), skin: SKINS.findIndex((s) => s.name === "Ash"), hair: HAIRS.findIndex((h) => h.name === "Silver"), top: TOPCOLORS.findIndex((c) => c.name === "Grey"), ground: GROUNDS.findIndex((g) => g.name === "Steel"), accent: ACCENTS.findIndex((a) => a.name === "White") };
+  const has = (slot: string) => pins[slot] !== undefined;
+  SLOTS.forEach((s, k) => { if (has(s.slot)) t.items[k] = pins[s.slot]!; });
+  if (has("background")) t.ground = 3;
+  if (has("hair")) t.hair = 1;
+  if (has("top")) t.top = 3;
+  if (has("eyes")) t.accent = 0;
+  return svgOf(t, px);
+}
+
+/** Face of the day: what the page wears before anyone has rolled. */
+export function faceOfDay(epoch: number): Traits {
+  return traitsOf(mix64(BigInt(epoch)));
+}
+export function groundOf(t: Traits): { bg: string; fg: string; muted: string } {
+  const g = GROUNDS[t.ground];
+  const n = parseInt(g.main.slice(1), 16);
+  const lum = (0.3 * (n >> 16) + 0.59 * ((n >> 8) & 255) + 0.11 * (n & 255)) / 255;
+  return { bg: g.main, fg: lum > 0.55 ? "#1c1a19" : "#f6f4ee", muted: g.shade };
+}
