@@ -9,3 +9,4 @@ Last verified: 2026-09-05
 - **Supply 10,000, 50 one of ones.** A second season is a new contract.
 - **Art:** Ink 3 at 32x32: black outline, dithered grounds, rim light. Heads are boxes with a jaw, not ellipses.
 - **No royalties, no light/dark toggle, CC0.**
+- **Deploy path:** stores and meta through `forge script`, renderer and token through `forge create` (forge script cannot decode the `address[]` constructor argument). Verify on Sourcify by hand. (2026-09-05)
