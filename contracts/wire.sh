@@ -9,6 +9,12 @@ case "$NET" in
   *) echo "sepolia|mainnet"; exit 1;;
 esac
 D="$HOME/.config/onenft-faces/deploy-$NET.json"; [ -f "$D" ] || { echo "no $D"; exit 1; }
+# Deploy block of the token, found by binary search on cast code, so the site's log scan starts there.
+if [ "$(jq -r '.block // empty' "$D")" = "" ]; then
+  NFT=$(jq -r .OneNFT "$D"); lo=0; hi=$(cast block-number --rpc-url "$RPC")
+  while [ $((hi - lo)) -gt 1 ]; do mid=$(((lo + hi) / 2)); if [ "$(cast code "$NFT" --block "$mid" --rpc-url "$RPC")" = "0x" ]; then lo=$mid; else hi=$mid; fi; done
+  jq --argjson b "$hi" '. + {block: $b}' "$D" > "$D.tmp" && mv "$D.tmp" "$D"; echo "deploy block $hi"
+fi
 python3 - "$NET" "$APP" "$RPC" "$D" <<'EOF'
 import sys, json, urllib.request, os
 net, app, rpc, dpath = sys.argv[1:5]
@@ -17,7 +23,7 @@ tok = json.load(open(os.path.expanduser("~/.config/coolify/credentials.json")))[
 H = {"Authorization": "Bearer " + tok, "content-type": "application/json"}
 base = f"https://admin.orzech.me/api/v1/applications/{app}/envs"
 existing = {e["key"]: e["uuid"] for e in json.load(urllib.request.urlopen(urllib.request.Request(base, headers=H)))}
-want = {"CONTRACT_ADDRESS": d["OneNFT"], "CHAIN_ID": str(d["chainId"]), "BASE_RPC_URL": rpc}
+want = {"CONTRACT_ADDRESS": d["OneNFT"], "CHAIN_ID": str(d["chainId"]), "BASE_RPC_URL": rpc, "CONTRACT_BLOCK": str(d["block"])}
 for k, v in want.items():
     body = json.dumps({"key": k, "value": v, "is_preview": False}).encode()
     if k in existing:

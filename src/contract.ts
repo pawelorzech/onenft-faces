@@ -121,7 +121,8 @@ export async function canRoll(wallet: Address): Promise<{ canRoll: boolean; last
 // ---- roll log ----
 const rolls = new Map<number, Roll>();
 const CHUNK = BigInt(process.env.LOG_CHUNK ?? "10000");
-let scanned = BigInt(process.env.CONTRACT_BLOCK ?? "0");
+/** First block to scan: the contract's deploy block from CONTRACT_BLOCK, else the last 200,000 blocks (about five days on Base). */
+let scanned = process.env.CONTRACT_BLOCK ? BigInt(process.env.CONTRACT_BLOCK) : -1n;
 let scanning = false;
 
 export async function scanRolls(): Promise<void> {
@@ -129,6 +130,7 @@ export async function scanRolls(): Promise<void> {
   scanning = true;
   try {
     const head = await client.getBlockNumber();
+    if (scanned < 0n) scanned = head > 200_000n ? head - 200_000n : 0n;
     while (scanned < head) {
       const to = scanned + CHUNK > head ? head : scanned + CHUNK;
       const logs = await client.getLogs({ address: CONTRACT as Address, event: ROLLED, fromBlock: scanned, toBlock: to });
