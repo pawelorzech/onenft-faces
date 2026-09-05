@@ -96,7 +96,7 @@ ${rows.length ? `${sizePicker()}\n<div>${rows.join("\n")}</div>` : `<p>No faces 
 </main>
 ${connectScript("/")}
 ${rows.length ? downloadScript() : ""}`;
-  return layout(`${rawName} | ${SITE}`, p, body, "/today.png", `/${handle}`);
+  return layout(`${rawName} | ${SITE}`, p, body, "/today.png", `/${handle}`, `${mine.length} ${plural(mine.length, "face", "faces")} of ${SITE} held by ${rawName}.`);
 }
 
 export function assetsPage(chain: ChainState | null, epoch: number): string {

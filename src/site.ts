@@ -330,23 +330,33 @@ const ANALYTICS = UMAMI_URL && UMAMI_WEBSITE_ID ? `<script defer src="${esc(UMAM
 const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Newsreader:opsz,wght@6..72,400&display=swap">`;
 const DESC = `One face per wallet each UTC day, rolled on chain on Base. Pin traits for a fee or leave them to chance. The collection ends at ${num(MAX_SUPPLY)} faces.`;
 
-export function layout(title: string, p: Colors, body: string, image = "/today.png", path = "/"): string {
+export function layout(title: string, p: Colors, body: string, image = "/today.png", path = "/", description?: string): string {
+  const alt = title.replace(/ \| .*$/, "") + " on " + SITE;
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
-<meta name="description" content="${DESC}">
+<meta name="description" content="${esc(description ?? DESC)}">
 <meta name="theme-color" content="${p.bg}">
 <link rel="icon" href="/today.svg" type="image/svg+xml">
 <link rel="canonical" href="https://${SITE}${esc(path)}">
 <meta property="og:title" content="${esc(title)}">
-<meta property="og:description" content="${DESC}">
+<meta property="og:description" content="${esc(description ?? DESC)}">
 <meta property="og:image" content="https://${SITE}${esc(image)}">
 <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta property="og:url" content="https://${SITE}${esc(path)}">
 <meta name="twitter:card" content="summary_large_image">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${SITE}">
+<meta property="og:locale" content="en_US">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="${esc(alt)}">
+<meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(description ?? DESC)}">
+<meta name="twitter:image" content="https://${SITE}${esc(image)}">
+<meta name="twitter:image:alt" content="${esc(alt)}">
 ${FONTS}
 ${ANALYTICS}
 <style>${css(p)}</style>
@@ -785,7 +795,7 @@ ${downloadBar(id, p.bg)}
 <details><summary class="small">Put this face on your page</summary><pre class="snip">${snippet}</pre><p class="small">CC0. No credit needed.</p></details>
 </main>
 ${downloadScript()}`;
-  return layout(`Face #${id} | ${SITE}`, p, body, `/face/${id}.png${IMG_Q}`, `/face/${id}`);
+  return layout(`Face #${id} | ${SITE}`, p, body, `/face/${id}.png${IMG_Q}`, `/face/${id}`, `Face #${id} of ${SITE}: ${rarityOf(t)}, ${attributesOf(t).slice(0, 5).map((a) => a.value).join(", ")}${pinsN ? `, ${pinsN} ${plural(pinsN, "pin", "pins")}` : ""}${f.one !== 255 ? ", one of one" : ""}. ${heldBy(chain, id, names) || "Rolled on chain"}.`);
 }
 
 export function howPage(chain: ChainState | null, epoch: number): string {
