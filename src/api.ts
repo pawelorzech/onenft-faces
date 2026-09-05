@@ -2,7 +2,8 @@
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
 import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, attributesOf, rarityOf, unpackPins, PIN_PRICES_WEI, PIN_KEYS, TIER_WEIGHT } from "./faces.ts";
 import { SITE, traitsOfRecord, isAuthor, opensea, explorer, MAX_SUPPLY, type Names, NO_NAMES } from "./site.ts";
-import type { ChainState, FaceRecord } from "./contract.ts";
+import { unrevealed, type ChainState, type FaceRecord } from "./contract.ts";
+const unrevealedList = () => unrevealed;
 import type { Address } from "viem";
 
 export function faceJson(f: FaceRecord, chain: ChainState, names: Names = NO_NAMES) {
@@ -33,6 +34,7 @@ export function stateJson(chain: ChainState | null, names: Names = NO_NAMES) {
     site: SITE,
     contract: chain ? { address: chain.address, chainId: chain.chainId, renderer: chain.renderer, rendererLocked: chain.rendererLocked, author: chain.author } : null,
     totalSupply: chain?.totalSupply ?? 0,
+    pending: chain ? [...unrevealedList()].length : 0,
     maxSupply: MAX_SUPPLY,
     poolLeft: chain?.poolLeft ?? ONE_OF_ONES.length,
     secondsLeft: chain?.secondsLeft ?? null,
@@ -51,7 +53,7 @@ export function specJson() {
     site: SITE,
     version: 1,
     canvas: { size: 32, bitsPerPixel: 3, roles: ["none", "outline", "fill", "shade", "light", "second", "secondShade", "white"] },
-    draw: { mixer: "splitmix64 finalizer", seed: "keccak256(prevrandao, wallet, tokenId, block.number) as uint64", perDraw: "mix64(seed + i) mod 10000", order: [...SLOTS.map((s) => s.slot), "skin", "hairColour", "topColour", "ground", "accent", "lucky", "poolIndex"] },
+    draw: { mixer: "splitmix64 finalizer", seed: "keccak256(blockhash(commitBlock + 1), wallet, pins, commitBlock, tokenId) as uint64", perDraw: "mix64(seed + i) mod 10000", order: [...SLOTS.map((s) => s.slot), "skin", "hairColour", "topColour", "ground", "accent", "lucky", "poolIndex"] },
     tierWeights: TIER_WEIGHT,
     slots: SLOTS.map((s, k) => ({ slot: s.slot, trait: s.trait, pinnable: s.pinnable, group: s.group, items: s.items.map((it, i) => ({ name: it.name, tier: it.tier, weight: WEIGHTS[k][i] })) })),
     pinKeys: PIN_KEYS,
@@ -62,6 +64,6 @@ export function specJson() {
     oneOfOnes: ONE_OF_ONES.map((o) => ({ name: o.name, main: o.main, second: o.second })),
     oneOfOneOdds: "poolLeft / tokensLeft per roll without pins",
     maxSupply: MAX_SUPPLY,
-    rule: "one roll per wallet per UTC day; up to three pins on the pin keys, common or uncommon items only; a pinned roll never takes a one of one",
+    rule: "one roll per wallet per UTC day, as commit then reveal one block later; up to three pins on the pin keys, common or uncommon items only; any roll may take a one of one with odds poolLeft / tokensLeft",
   };
 }

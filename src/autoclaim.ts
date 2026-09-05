@@ -1,22 +1,39 @@
 /**
- * The author's daily roll. The contract lets anyone trigger it; this loop
- * does, from the deployer wallet, so the treasury never misses a day. Runs
- * only when DEPLOYER_KEY is set.
+ * The keeper. Two jobs from the deployer wallet, so nobody has to sign twice
+ * and the treasury never misses a day: reveal every commit that is old enough
+ * (anyone may, the contract allows it) and commit the author's daily roll.
+ * Runs only when DEPLOYER_KEY is set.
  */
 import { createWalletClient, http, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { ABI, CONTRACT, chain, chainState, canRoll, type ChainState } from "./contract.ts";
+import { ABI, CONTRACT, chain, chainState, canRoll, unrevealed, publicClient, type ChainState } from "./contract.ts";
 
 /** Pure decision, so it can be tested without a chain. */
-export function shouldRoll(state: ChainState | null, authorCanRoll: boolean): boolean {
+export function shouldCommitTreasury(state: ChainState | null, authorCanRoll: boolean): boolean {
   if (!state) return false;
   return authorCanRoll && state.totalSupply < 10000;
 }
+export function revealDue(revealBlock: number, head: number): boolean {
+  return revealBlock > 0 && head >= revealBlock;
+}
 
-export function startAutoclaim(key: Hex, everyMs = 5 * 60_000): void {
+let wallet: ReturnType<typeof createWalletClient> | null = null;
+let busy = false;
+
+/** Reveal one wallet's commit if it is due. Returns the transaction hash or null. */
+export async function revealFor(who: Address): Promise<Hex | null> {
+  if (!wallet) return null;
+  const { revealBlock, head } = await canRoll(who);
+  if (!revealDue(revealBlock, head)) return null;
+  const hash = await wallet.writeContract({ address: CONTRACT as Address, abi: ABI, functionName: "reveal", args: [who], chain, account: wallet.account! });
+  unrevealed.delete(who);
+  console.log(`keeper: revealed for ${who}, tx ${hash}`);
+  return hash;
+}
+
+export function startAutoclaim(key: Hex, everyMs = 60_000): void {
   const account = privateKeyToAccount(key);
-  const wallet = createWalletClient({ account, chain, transport: http(process.env.BASE_RPC_URL) });
-  let busy = false;
+  wallet = createWalletClient({ account, chain, transport: http(process.env.BASE_RPC_URL) });
   const tick = async () => {
     if (busy) return;
     busy = true;
@@ -24,17 +41,21 @@ export function startAutoclaim(key: Hex, everyMs = 5 * 60_000): void {
       const st = await chainState();
       if (!st) return;
       const { canRoll: ok } = await canRoll(st.author);
-      if (shouldRoll(st, ok)) {
-        const hash = await wallet.writeContract({ address: CONTRACT as Address, abi: ABI, functionName: "rollForTreasury" });
-        console.log(`autoclaim: treasury roll, tx ${hash}`);
+      if (shouldCommitTreasury(st, ok)) {
+        const hash = await wallet!.writeContract({ address: CONTRACT as Address, abi: ABI, functionName: "commitForTreasury", chain, account });
+        console.log(`keeper: treasury commit, tx ${hash}`);
+        unrevealed.add(st.author);
+      }
+      for (const who of [...unrevealed]) {
+        try { await revealFor(who); } catch (e) { console.error(`keeper: reveal ${who}:`, (e as Error).message); }
       }
     } catch (e) {
-      console.error("autoclaim:", (e as Error).message);
+      console.error("keeper:", (e as Error).message);
     } finally {
       busy = false;
     }
   };
   void tick();
   setInterval(tick, everyMs);
-  console.log(`autoclaim armed from ${account.address}, every ${everyMs / 60000} min`);
+  console.log(`keeper armed from ${account.address}, every ${everyMs / 1000} s`);
 }

@@ -8,7 +8,7 @@
  */
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
 import { traitsOf, svgOf, attributesOf, rarityOf, groundOf, faceOfDay, packPins, unpackPins, pinOk, skinPinOk, SKINS, PINNABLE, PIN_KEYS, MAX_PINS, PIN_PRICES_WEI, combinations, type Traits, type Pins } from "./faces.ts";
-import { ROLL_SELECTOR, type ChainState, type FaceRecord } from "./contract.ts";
+import { COMMIT_SELECTOR, type ChainState, type FaceRecord } from "./contract.ts";
 
 export type Names = Map<string, string>;
 export const NO_NAMES: Names = new Map();
@@ -242,7 +242,7 @@ function builderScript(chain: ChainState | null): string {
     name: chain ? chainName(chain.chainId) : null,
     rpc: chain?.chainId === 8453 ? "https://mainnet.base.org" : "https://sepolia.base.org",
     explorer: chain ? explorer(chain.chainId) : "",
-    selector: ROLL_SELECTOR,
+    selector: COMMIT_SELECTOR,
     prices: PIN_PRICES_WEI.map((p) => p.toString()),
     keys: Array.from({ length: 8 }, (_, k) => PIN_KEYS[k] ?? null),
     maxPins: MAX_PINS,
@@ -274,6 +274,7 @@ if(btn)btn.addEventListener('click',async function(){
     try{await eth.request({method:'wallet_switchEthereumChain',params:[{chainId:CFG.chainHex}]})}
     catch(e){if(e&&e.code===4902){await eth.request({method:'wallet_addEthereumChain',params:[{chainId:CFG.chainHex,chainName:CFG.name,rpcUrls:[CFG.rpc],nativeCurrency:{name:'Ether',symbol:'ETH',decimals:18},blockExplorerUrls:[CFG.explorer]}]})}else{throw e}}
     var can=await fetch('/api/can-roll/'+from).then(function(r){return r.json()});
+    if(can.revealBlock){say('You have a roll waiting to be revealed.');await revealLoop(from);return}
     if(!can.canRoll){say('This wallet rolled today already. Midnight UTC resets it.');btn.disabled=false;return}
     var n=count();var wei=BigInt(CFG.prices[n]);
     say(n?'Confirm in your wallet: '+fmt(wei)+' plus gas.':'Confirm in your wallet. You pay gas, nothing else.');
@@ -282,10 +283,20 @@ if(btn)btn.addEventListener('click',async function(){
     var hash=await eth.request({method:'eth_sendTransaction',params:[tx]});
     say('Sent. Waiting for the network.');
     for(var i=0;i<90;i++){await sleep(2000);var r=await eth.request({method:'eth_getTransactionReceipt',params:[hash]});
-      if(r){if(r.status==='0x1'){var log=(r.logs||[]).filter(function(l){return l.topics&&l.topics.length>2&&l.address.toLowerCase()===CFG.address.toLowerCase()})[0];var id=log?parseInt(log.topics[1],16):0;say('Rolled. Face #'+id+' is yours.');await sleep(1200);location.href=id?'/face/'+id:'/'}else{say('The network rejected it.');btn.disabled=false}return}}
+      if(r){if(r.status==='0x1'){say('Committed. The next block picks your face.');await revealLoop(from)}else{say('The network rejected it.');btn.disabled=false}return}}
     say('Still waiting. Refresh the page in a moment.');
   }catch(e){say(e&&e.code===4001?'Cancelled in the wallet.':'Failed: '+((e&&e.message)||e));btn.disabled=false}
 });
+async function revealLoop(from){
+  for(var i=0;i<60;i++){
+    await sleep(2500);
+    var r=await fetch('/api/reveal/'+from,{method:'POST'}).then(function(x){return x.json()}).catch(function(){return {}});
+    if(r.revealed){say('Revealed. Finding your face.');await sleep(3000);var s=await fetch('/api/holder/'+from).then(function(x){return x.json()}).catch(function(){return null});var last=s&&s.faces&&s.faces.length?s.faces[s.faces.length-1].id:0;location.href=last?'/face/'+last:'/';return}
+    if(r.revealBlock===0){say('Revealed. Finding your face.');await sleep(2000);location.href='/'+from;return}
+    say('Waiting for the next block ('+(r.head||'?')+' of '+(r.revealBlock||'?')+').');
+  }
+  say('The reveal is taking long. Come back in a minute; your roll is safe.');
+}
 update();
 })();
 </script>`;
@@ -336,7 +347,7 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
 <aside><div class="stick">
 <a class="mark syne" href="/">${SITE}</a>
 <h1 class="syne">One face<br>a day,<br>yours to pin</h1>
-<p class="lead">Every wallet rolls one face a day, free. Pin a background, a top, eyes, hair or a skin tone and pay a little; the rest is luck. Rare things cannot be bought. A roll without pins can land on a one of one.</p>
+<p class="lead">Every wallet rolls one face a day, free. Pin a background, a top, eyes, hair or a skin tone and pay a little; the rest is luck. Rare things cannot be bought. Any roll can land on a one of one.</p>
 <hr>
 <div style="display:flex;gap:34px"><div><div class="big syne">${num(total)}</div><div class="small">of ${num(MAX_SUPPLY)} rolled</div></div>${chain ? `<div><div class="syne" style="font-weight:700;font-size:26px;line-height:1">${chain.poolLeft}</div><div class="small">1/1 left</div></div><div id="yours" hidden><div class="syne" style="font-weight:700;font-size:26px;line-height:1">0</div><div class="small">yours</div></div>` : ""}</div>
 <div style="display:flex;flex-direction:column;gap:12px">${cta}</div>
@@ -390,10 +401,10 @@ export function howPage(chain: ChainState | null, epoch: number): string {
   const body = `<main class="prose">
 ${topBar()}
 <h2 class="syne">One roll a day, and what you may pin</h2>
-<p><strong>The roll.</strong> Every wallet may call <code>roll</code> once per UTC day. The contract mixes the block's randomness, your address and the token number into a 64-bit seed, and the seed decides everything: seven layers, five colours, and whether this roll takes a one of one. A free roll costs gas and nothing else.</p>
-<p><strong>The pins.</strong> Five things can be pinned: background, top, eyes, hair or hat, and skin tone. You may pin up to three of them, to any common or uncommon item; the pinnable skins are the human tones. One pin costs 0.0005 ETH, two cost 0.0015, three cost 0.004. The fee goes to the author. Rare and legendary items cannot be pinned; they come from luck or not at all. A roll with pins never lands on a one of one.</p>
+<p><strong>The roll.</strong> Every wallet may roll once per UTC day, in two steps so nobody can peek and retry. <code>commit</code> spends your day, fixes your pins and pays the fee. One block later <code>reveal</code> mixes the hash of the block after your commit with your address and the token number into a 64-bit seed, and the seed decides everything: seven layers, five colours, and whether this roll takes a one of one. The site reveals for you, so you sign once; anyone may reveal for anyone, and a commit nobody reveals just waits. A free roll costs gas and nothing else.</p>
+<p><strong>The pins.</strong> Five things can be pinned: background, top, eyes, hair or hat, and skin tone. You may pin up to three of them, to any common or uncommon item; the pinnable skins are the human tones. One pin costs 0.0005 ETH, two cost 0.0015, three cost 0.004. The fee goes to the author. Rare and legendary items cannot be pinned; they come from luck or not at all.</p>
 <p><strong>The layers.</strong> ${SLOTS.map((s) => `${s.items.length} ${s.trait.toLowerCase()}`).join(", ")}. Every item has a tier: common, uncommon, rare, legendary. The weight tables live in the contract; <a href="/rarity">the rarity page</a> lists each item's odds per roll. Skin, hair colour, top colour, ground and accent colour are drawn on top of that. ${num(combinations())} combinations before the one of ones.</p>
-<p><strong>The one of ones.</strong> ${ONE_OF_ONES.length} full drawings sit in a pool. A roll without pins takes one with odds of pool left over tokens left: about 1 in ${Math.round(10000 / ONE_OF_ONES.length)} on the first roll, better as the end nears, so on average the whole pool is rolled by the last token. The contract removes a rolled one from the pool; each exists once. <a href="/ones">See what is left.</a></p>
+<p><strong>The one of ones.</strong> ${ONE_OF_ONES.length} full drawings sit in a pool. Any roll takes one with odds of pool left over tokens left: about 1 in ${Math.round(10000 / ONE_OF_ONES.length)} on the first roll, better as the end nears, so on average the whole pool is rolled by the last token. The contract removes a rolled one from the pool; each exists once. <a href="/ones">See what is left.</a></p>
 <p><strong>The treasury.</strong> The author's wallet gets one free roll a day too, with the same luck as everyone. Anyone may trigger it; the site does, at midnight UTC.</p>
 <p><strong>The image.</strong> A sprite is 32 by 32 pixels of roles, not colours: outline, fill, shade, light, a second fill, white. The token's palette turns roles into colours, so one hair sprite serves every hair colour. Layers composite bottom to top, a rim light lands where a fill sits right of an outline, and the result is one SVG of rects returned as a <code>data:</code> URI by the contract, with no server in between.</p>
 <p><strong>The end.</strong> Supply stops at 10,000. The image rules can change for faces not yet rolled until the author locks them; a rolled face keeps its renderer forever.</p>
@@ -405,11 +416,11 @@ ${topBar()}
   x = (x ^ (x >> 27)) * 0x94d049bb133111eb
   return x ^ (x >> 31)
 
-seed = keccak(prevrandao, wallet, tokenId, block) as u64
+seed = keccak(blockhash(commitBlock + 1), wallet, pins, commitBlock, tokenId) as u64
 draw(i) = mix(seed + i) mod 10000
 for slot in 0..6: item[slot] = walk(WEIGHTS[slot], draw(slot)), or the pin
 skin = walk(SKIN_WEIGHTS, draw(7)), or the pin; hair, top, ground, accent = draw(8..11) mod count
-lucky = no pins and draw(12) < pool size * 10000 / tokens left; one = pool[draw(13) mod pool size]</code></pre>
+lucky = draw(12) < pool size * 10000 / tokens left; one = pool[draw(13) mod pool size]</code></pre>
 <p>Everything here is CC0. If you build on it, write to me.</p>
 <p class="small"><a href="/">Back to the roll</a>. Every collection: <a href="https://${PARENT}">${PARENT}</a>.</p>
 </main>`;

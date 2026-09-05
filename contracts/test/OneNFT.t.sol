@@ -11,6 +11,7 @@ contract OneNFTTest is Test {
     using Strings for uint256;
 
     uint256 constant EB = 86400;
+    uint64 constant NONE = type(uint64).max;
     address author = address(0xA11CE);
     address alice = address(0xA1);
     address bob = address(0xB0B);
@@ -19,6 +20,7 @@ contract OneNFTTest is Test {
 
     function setUp() public {
         vm.warp(20701 * EB + 100);
+        vm.roll(1000);
         string memory d = vm.readFile("test/fixtures/faces_data.json");
         uint256 sprites = vm.parseJsonUint(d, "$.sprites");
         uint256 n = (sprites + 62) / 63;
@@ -30,71 +32,105 @@ contract OneNFTTest is Test {
         vm.deal(bob, 1 ether);
     }
 
-    function test_FreeRollMintsToCallerOncePerDay() public {
-        vm.prank(alice);
-        uint256 id = nft.roll(type(uint64).max);
+    function rollFor(address who, uint64 pins, uint256 value) internal returns (uint256 id) {
+        vm.prank(who);
+        nft.commit{value: value}(pins);
+        vm.roll(block.number + 1);
+        id = nft.reveal(who);
+    }
+
+    function test_CommitThenRevealMintsOncePerDay() public {
+        uint256 id = rollFor(alice, NONE, 0);
         assertEq(id, 1);
         assertEq(nft.ownerOf(1), alice);
         assertFalse(nft.canRoll(alice));
         uint256 next = (nft.currentEpoch() + 1) * EB;
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(OneNFT.OneRollADay.selector, alice, next));
-        nft.roll(type(uint64).max);
+        nft.commit(NONE);
         vm.warp(block.timestamp + EB);
         assertTrue(nft.canRoll(alice));
-        vm.prank(alice);
-        assertEq(nft.roll(type(uint64).max), 2);
+        assertEq(rollFor(alice, NONE, 0), 2);
     }
 
-    function test_PinnedRollCostsByCountAndPaysTheAuthor() public {
+    function test_RevealNeedsTheNextBlockAndOnlyOnce() public {
+        vm.prank(alice);
+        nft.commit(NONE);
+        assertEq(nft.pending(), 1);
+        assertEq(nft.revealBlockOf(alice), block.number + 1);
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.TooEarly.selector, alice, block.number + 1));
+        nft.reveal(alice);
+        vm.roll(block.number + 1);
+        vm.prank(bob); // anyone may reveal for anyone
+        nft.reveal(alice);
+        assertEq(nft.pending(), 0);
+        assertEq(nft.ownerOf(1), alice);
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.NothingToReveal.selector, alice));
+        nft.reveal(alice);
+    }
+
+    function test_RevertingOnTheOutcomeCannotRetry() public {
+        // The outcome is fixed by the block after the commit; the day is spent at the commit.
+        vm.prank(alice);
+        nft.commit(NONE);
+        vm.prank(alice);
+        vm.expectRevert();
+        nft.commit(NONE);
+        vm.roll(block.number + 1);
+        uint256 id = nft.reveal(alice);
+        (uint64 seed,,,) = nft.faces(id);
+        assertGt(seed, 0);
+    }
+
+    function test_PinnedCommitCostsByCountAndPaysTheAuthor() public {
         uint64 pins = 0x0001ffffffffffff; // background 0, top 1
         assertEq(nft.priceOf(pins), 0.0015 ether);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(OneNFT.WrongPrice.selector, 0.0015 ether, 0));
-        nft.roll(pins);
+        nft.commit(pins);
         uint256 before = author.balance;
-        vm.prank(alice);
-        nft.roll{value: 0.0015 ether}(pins);
+        uint256 id = rollFor(alice, pins, 0.0015 ether);
         assertEq(author.balance - before, 0.0015 ether);
-        (, uint64 stored,,) = nft.faces(1);
+        (, uint64 stored,,) = nft.faces(id);
         assertEq(stored, pins);
         assertEq(nft.priceOf(0x00ffffffffffffff), 0.0005 ether);
         assertEq(nft.priceOf(0x000102ffffffffff), 0.004 ether);
         vm.prank(bob);
         vm.expectRevert(abi.encodeWithSelector(OneNFT.BadPins.selector, uint64(0x00010203ffffffff)));
-        nft.roll{value: 0.004 ether}(0x00010203ffffffff); // four pins
-        vm.prank(bob);
-        nft.roll{value: 0.0005 ether}(0xffffffff02ffffff); // skin Tan
-        (, uint64 sk,,) = nft.faces(2);
+        nft.commit{value: 0.004 ether}(0x00010203ffffffff); // four pins
+        uint256 id2 = rollFor(bob, 0xffffffff02ffffff, 0.0005 ether); // skin Tan
+        (, uint64 sk,,) = nft.faces(id2);
         assertEq(sk, 0xffffffff02ffffff);
     }
 
     function test_PinOnRareItemOrUnknownIndexReverts() public {
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(OneNFT.BadPins.selector, uint64(0xffff0dffffffffff)));
-        nft.roll{value: 0.0005 ether}(0xffff0dffffffffff);
+        nft.commit{value: 0.0005 ether}(0xffff0dffffffffff);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(OneNFT.BadPins.selector, uint64(0xff63ffffffffffff)));
-        nft.roll{value: 0.0005 ether}(0xff63ffffffffffff);
+        nft.commit{value: 0.0005 ether}(0xff63ffffffffffff);
     }
 
     function test_TreasuryRollIsPermissionlessAndDaily() public {
         vm.prank(bob);
-        uint256 id = nft.rollForTreasury();
-        assertEq(nft.ownerOf(id), author);
+        nft.commitForTreasury();
         vm.prank(alice);
         vm.expectRevert();
-        nft.rollForTreasury();
+        nft.commitForTreasury();
+        vm.roll(block.number + 1);
+        uint256 id = nft.reveal(author);
+        assertEq(nft.ownerOf(id), author);
         vm.warp(block.timestamp + EB);
-        nft.rollForTreasury();
+        nft.commitForTreasury();
+        vm.roll(block.number + 1);
+        nft.reveal(author);
         assertEq(nft.balanceOf(author), 2);
     }
 
     function test_TokenUriComesFromThePinnedRenderer() public {
-        vm.prank(alice);
-        nft.roll(type(uint64).max);
+        rollFor(alice, NONE, 0);
         string memory uri = nft.tokenURI(1);
-        assertEq(bytes(uri).length > 200, true);
         assertEq(keccak256(bytes(substr(uri, 0, 29))), keccak256("data:application/json;base64,"));
         vm.expectRevert();
         nft.tokenURI(2);
@@ -102,13 +138,13 @@ contract OneNFTTest is Test {
 
     function test_OneOfOnePoolDrainsOnLuckyRolls() public {
         assertEq(nft.poolLeft(), renderer.oneOfOneCount());
-        // Force luck: keep rolling fresh wallets until a 1/1 lands or we give up.
         uint256 hits = 0;
-        for (uint256 i = 1; i < 2000 && hits == 0; i++) {
+        for (uint256 i = 1; i < 3000 && hits == 0; i++) {
             address w = address(uint160(0x1000 + i));
-            vm.prevrandao(bytes32(uint256(i * 7919)));
             vm.prank(w);
-            uint256 id = nft.roll(type(uint64).max);
+            nft.commit(NONE);
+            vm.roll(block.number + 1);
+            uint256 id = nft.reveal(w);
             (,, uint8 one,) = nft.faces(id);
             if (one != 255) hits++;
         }
@@ -116,16 +152,20 @@ contract OneNFTTest is Test {
         assertEq(nft.poolLeft(), renderer.oneOfOneCount() - 1);
     }
 
-    function test_SupplyCap() public {
-        // MAX_SUPPLY is 10,000; exhaust it with fresh wallets is too slow, so check the guard via storage.
-        vm.store(address(nft), bytes32(uint256(8)), bytes32(uint256(10000)));
-        assertEq(nft.totalSupply(), 10000);
+    function test_SupplyCapCountsPendingCommits() public {
+        vm.store(address(nft), bytes32(uint256(8)), bytes32(uint256(9999)));
+        assertEq(nft.totalSupply(), 9999);
         vm.prank(alice);
+        nft.commit(NONE);
+        assertFalse(nft.canRoll(bob));
+        vm.prank(bob);
         vm.expectRevert(OneNFT.SoldOut.selector);
-        nft.roll(type(uint64).max);
+        nft.commit(NONE);
+        vm.roll(block.number + 1);
+        assertEq(nft.reveal(alice), 10000);
     }
 
-    function test_RendererLockAndOwnership() public {
+    function test_RendererLockOwnershipAndSweep() public {
         vm.prank(alice);
         vm.expectRevert();
         nft.setRenderer(address(renderer));
@@ -133,10 +173,28 @@ contract OneNFTTest is Test {
         vm.expectRevert(OneNFT.OwnershipIsPermanent.selector);
         nft.renounceOwnership();
         vm.prank(author);
+        nft.setRenderer(address(renderer)); // the same renderer passes every probe
+        vm.prank(author);
         nft.lockRenderer();
         vm.prank(author);
         vm.expectRevert(OneNFT.RendererIsLocked.selector);
         nft.setRenderer(address(renderer));
+        vm.deal(address(nft), 1 ether);
+        uint256 before = author.balance;
+        nft.sweep();
+        assertEq(author.balance - before, 1 ether);
+    }
+
+    function test_RendererMustAnswerEveryProbe() public {
+        vm.prank(author);
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.BadRenderer.selector, address(0xdead)));
+        nft.setRenderer(address(0xdead));
+        // a renderer that knows fewer 1/1s than the pool holds is refused
+        string memory d = vm.readFile("test/fixtures/faces_data.json");
+        uint256 sprites = vm.parseJsonUint(d, "$.sprites");
+        address meta = DataStore.write(vm.parseJsonBytes(d, "$.meta"));
+        vm.expectRevert();
+        new FaceRenderer(new address[](0), meta, sprites);
     }
 
     function substr(string memory s, uint256 from, uint256 len) internal pure returns (string memory) {

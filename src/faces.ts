@@ -85,7 +85,7 @@ export const PIN_KEYS = [...PINNABLE.map((k) => SLOTS[k].slot), "skin"];
 export const NO_PIN = 0xff;
 export const NO_PINS = 0xffffffffffffffffn;
 export const MAX_PINS = 3;
-/** The 1/1 odds adapt: a roll without pins hits the pool with probability poolLeft / tokensLeft, so on average every 1/1 is rolled by the end. */
+/** The 1/1 odds adapt: any roll hits the pool with probability poolLeft / tokensLeft, so on average every 1/1 is rolled by the end. */
 export const MAX_SUPPLY = 10000;
 export const PIN_PRICES_WEI = [0n, 500_000_000_000_000n, 1_500_000_000_000_000n, 4_000_000_000_000_000n];
 

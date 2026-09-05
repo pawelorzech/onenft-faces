@@ -58,4 +58,22 @@ const fixtures = cases.map((c) => {
   return { seed: c.seed.toString(), pins: packPins(c.pins).toString(), one: c.one ?? 255, svg: f.svg, json: metadataOf(1, f.traits), attributes: f.attributes.map((a) => ({ type: a.trait_type, value: a.value, tier: a.tier ?? "" })), items: f.traits.items, colours: [f.traits.skin, f.traits.hair, f.traits.top, f.traits.ground, f.traits.accent] };
 });
 await Bun.write(new URL("./test/fixtures/faces_cases.json", import.meta.url).pathname, JSON.stringify(fixtures, null, 1));
+
+// Coverage: for every slot item and every colour, a seed that draws it (found by search), plus every 1/1 index.
+// The Solidity test renders each through tokenURI so no index of the meta blob is left unreached.
+import { traitsOf } from "../src/faces.ts";
+const cover: { seed: string; pins: string; one: number; what: string }[] = [];
+const need = new Map<string, boolean>();
+SLOTS.forEach((sl, k) => sl.items.forEach((_, i) => need.set(`${k}:${i}`, false)));
+SKINS.forEach((_, i) => need.set(`skin:${i}`, false)); HAIRS.forEach((_, i) => need.set(`hair:${i}`, false)); TOPCOLORS.forEach((_, i) => need.set(`top:${i}`, false)); GROUNDS.forEach((_, i) => need.set(`ground:${i}`, false)); ACCENTS.forEach((_, i) => need.set(`accent:${i}`, false));
+for (let seed = 1n; seed < 2_000_000n && [...need.values()].some((v) => !v); seed++) {
+  const t = traitsOf(seed);
+  const keys = [...t.items.map((it, k) => `${k}:${it}`), `skin:${t.skin}`, `hair:${t.hair}`, `top:${t.top}`, `ground:${t.ground}`, `accent:${t.accent}`];
+  const fresh = keys.filter((k) => need.get(k) === false);
+  if (fresh.length) { fresh.forEach((k) => need.set(k, true)); cover.push({ seed: seed.toString(), pins: packPins({}).toString(), one: 255, what: fresh.join(" ") }); }
+}
+const missing = [...need].filter(([, v]) => !v).map(([k]) => k);
+for (let i = 0; i < ONE_OF_ONES.length; i++) cover.push({ seed: "5", pins: packPins({}).toString(), one: i, what: `one:${i}` });
+await Bun.write(new URL("./test/fixtures/faces_coverage.json", import.meta.url).pathname, JSON.stringify(cover));
+console.log(`${cover.length} coverage cases${missing.length ? ", UNREACHED: " + missing.join(" ") : ", every index reached"}`);
 console.log(`${sprites.length} sprites in ${stores.length} stores, meta ${meta.length} bytes, ${fixtures.length} cases, lucky seed ${lucky}`);

@@ -53,6 +53,23 @@ contract FaceRendererTest is Test {
     function test_SvgAndJsonMatchTypeScriptByteForByte_B() public view { checkCases(22, 44); }
     function test_SvgAndJsonMatchTypeScriptByteForByte_C() public view { checkCases(44, 100); }
 
+    /// Every item, every colour and every 1/1 through tokenURI, from test/fixtures/faces_coverage.json.
+    function coverage(uint256 from, uint256 to) internal view {
+        string memory json = vm.readFile("test/fixtures/faces_coverage.json");
+        uint256 count = caseCount(json);
+        for (uint256 i = from; i < to && i < count; i++) {
+            string memory k = string.concat("$[", i.toString(), "]");
+            uint64 seed = uint64(parseUint(vm.parseJsonString(json, string.concat(k, ".seed"))));
+            uint8 one = uint8(vm.parseJsonUint(json, string.concat(k, ".one")));
+            assertGt(bytes(r.tokenURI(1, seed, type(uint64).max, one)).length, 100, vm.parseJsonString(json, string.concat(k, ".what")));
+        }
+    }
+    function test_EveryIndexRenders_A() public view { coverage(0, 30); }
+    function test_EveryIndexRenders_B() public view { coverage(30, 60); }
+    function test_EveryIndexRenders_C() public view { coverage(60, 90); }
+    function test_EveryIndexRenders_D() public view { coverage(90, 120); }
+    function test_EveryIndexRenders_E() public view { coverage(120, 200); }
+
     function test_LuckySeedFromFixturesHitsThePool() public view {
         string memory json = vm.readFile("test/fixtures/faces_cases.json");
         uint256 count = caseCount(json);

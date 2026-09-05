@@ -41,8 +41,25 @@ contract FaceRenderer is IFaceRenderer {
         stores = stores_;
         meta = meta_;
         spriteCount = spriteCount_;
-        Layout memory L = layout(DataStore.read(meta_));
+        bytes memory m = DataStore.read(meta_);
+        Layout memory L = layout(m);
         if (L.totalItems + L.ones != spriteCount_) revert BadData("sprites", L.totalItems + L.ones);
+        // Every count the draws divide by must be non-zero, and at most seven slots may be pinnable (the eighth pin byte is the skin).
+        uint256 pinnableSlots = 0;
+        for (uint256 k = 0; k < L.slots; k++) {
+            if (itemCount(m, k) == 0) revert BadData("items", k);
+            if (pinnable(m, k)) pinnableSlots++;
+        }
+        if (pinnableSlots > 7) revert BadData("pinnable", pinnableSlots);
+        if (u8(m, L.skins) == 0 || u8(m, L.hairs) == 0 || u8(m, L.tops) == 0 || u8(m, L.grounds) == 0 || u8(m, L.accents) == 0) revert BadData("colours", 0);
+        // The names section must hold exactly one name per slot, item, colour and 1/1, and end at the last byte.
+        uint256 want = L.slots + L.totalItems + u8(m, L.skins) + u8(m, L.hairs) + u8(m, L.tops) + u8(m, L.grounds) + u8(m, L.accents) + L.ones;
+        uint256 p = L.names;
+        for (uint256 i = 0; i < want; i++) {
+            if (p >= m.length) revert BadData("names", i);
+            p += 1 + u8(m, p);
+        }
+        if (p != m.length) revert BadData("names", p);
     }
 
     function store(uint256 i) external view returns (address) {

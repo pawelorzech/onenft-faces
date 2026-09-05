@@ -6,7 +6,7 @@ import { rarityPage, onesPage, holderPage, assetsPage } from "./pages.ts";
 import { faceJson, stateJson, holderJson, specJson } from "./api.ts";
 import { cardPng } from "./image.ts";
 import { ensNames, resolveHolder } from "./ens.ts";
-import { startAutoclaim } from "./autoclaim.ts";
+import { startAutoclaim, revealFor } from "./autoclaim.ts";
 import { isAddress, type Address, type Hex } from "viem";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -80,6 +80,17 @@ Bun.serve({
     }
     const can = path.match(/^\/api\/can-roll\/(0x[0-9a-fA-F]{40})$/);
     if (can && chain) return json({ address: can[1], ...(await canRoll(can[1] as Address)), epoch: chain.epoch, secondsLeft: chain.secondsLeft }, 0);
+    // The keeper reveals a wallet's commit on request, so the roller signs once. Anyone may reveal; the contract decides.
+    const rev = path.match(/^\/api\/reveal\/(0x[0-9a-fA-F]{40})$/);
+    if (rev && chain && req.method === "POST") {
+      try {
+        const hash = await revealFor(rev[1] as Address);
+        const st = await canRoll(rev[1] as Address);
+        return json({ address: rev[1], revealed: Boolean(hash), tx: hash, revealBlock: st.revealBlock, head: st.head }, 0);
+      } catch (e) {
+        return json({ address: rev[1], revealed: false, error: (e as Error).message }, 0);
+      }
+    }
     const holder = path.match(/^\/(api\/holder\/)?(0x[0-9a-fA-F]{40}|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.eth)$/i);
     if (holder && chain) {
       const who = await resolveHolder(holder[2]);

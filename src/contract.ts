@@ -23,10 +23,15 @@ export const ABI = parseAbi([
   "function priceOf(uint64 pins) view returns (uint256)",
   "function faces(uint256 tokenId) view returns (uint64 seed, uint64 pins, uint8 one, address renderer)",
   "function ownerOf(uint256 tokenId) view returns (address)",
-  "function roll(uint64 pins) payable returns (uint256)",
-  "function rollForTreasury() returns (uint256)",
+  "function pending() view returns (uint256)",
+  "function commits(address wallet) view returns (uint64 pins, uint64 blockNumber, uint128 paid)",
+  "function revealBlockOf(address wallet) view returns (uint256)",
+  "function commit(uint64 pins) payable",
+  "function commitForTreasury()",
+  "function reveal(address wallet) returns (uint256)",
 ]);
-export const ROLL_SELECTOR = toFunctionSelector("function roll(uint64 pins)");
+export const COMMIT_SELECTOR = toFunctionSelector("function commit(uint64 pins)");
+const COMMITTED = parseAbiItem("event Committed(address indexed wallet, uint64 pins, uint256 blockNumber, uint256 paid)");
 const ROLLED = parseAbiItem("event Rolled(uint256 indexed tokenId, address indexed to, uint64 seed, uint64 pins, uint8 one, uint256 paid)");
 
 export type FaceRecord = { id: number; seed: bigint; pins: bigint; one: number; renderer: Address };
@@ -111,12 +116,19 @@ export async function chainState(): Promise<ChainState | null> {
   return state;
 }
 
-export async function canRoll(wallet: Address): Promise<{ canRoll: boolean; lastRollEpoch: number }> {
-  if (!client || !CONTRACT) return { canRoll: false, lastRollEpoch: 0 };
+export async function canRoll(wallet: Address): Promise<{ canRoll: boolean; lastRollEpoch: number; revealBlock: number; head: number }> {
+  if (!client || !CONTRACT) return { canRoll: false, lastRollEpoch: 0, revealBlock: 0, head: 0 };
   const c = { address: CONTRACT, abi: ABI } as const;
-  const [ok, last] = await client.multicall({ contracts: [{ ...c, functionName: "canRoll", args: [wallet] }, { ...c, functionName: "lastRollEpoch", args: [wallet] }], allowFailure: false });
-  return { canRoll: ok, lastRollEpoch: Number(last) };
+  const [[ok, last, rb], head] = await Promise.all([
+    client.multicall({ contracts: [{ ...c, functionName: "canRoll", args: [wallet] }, { ...c, functionName: "lastRollEpoch", args: [wallet] }, { ...c, functionName: "revealBlockOf", args: [wallet] }], allowFailure: false }),
+    client.getBlockNumber(),
+  ]);
+  return { canRoll: ok, lastRollEpoch: Number(last), revealBlock: Number(rb), head: Number(head) };
 }
+
+/** Wallets with a commit not yet revealed, from the Committed log since the last scan. */
+export const unrevealed = new Set<Address>();
+export function publicClient() { return client; }
 
 // ---- roll log ----
 const rolls = new Map<number, Roll>();
@@ -133,8 +145,11 @@ export async function scanRolls(): Promise<void> {
     if (scanned < 0n) scanned = head > 200_000n ? head - 200_000n : 0n;
     while (scanned < head) {
       const to = scanned + CHUNK > head ? head : scanned + CHUNK;
+      const committed = await client.getLogs({ address: CONTRACT as Address, event: COMMITTED, fromBlock: scanned, toBlock: to });
+      for (const l of committed) unrevealed.add(l.args.wallet!);
       const logs = await client.getLogs({ address: CONTRACT as Address, event: ROLLED, fromBlock: scanned, toBlock: to });
       for (const l of logs) {
+        unrevealed.delete(l.args.to!);
         const block = await client.getBlock({ blockNumber: l.blockNumber });
         rolls.set(Number(l.args.tokenId), { id: Number(l.args.tokenId), to: l.args.to!, tx: l.transactionHash, block: l.blockNumber, at: Number(block.timestamp), paid: l.args.paid! });
       }
