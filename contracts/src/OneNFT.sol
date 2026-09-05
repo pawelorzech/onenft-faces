@@ -82,9 +82,10 @@ contract OneNFT is ERC721, Ownable {
     }
 
     /// @dev A renderer address is pinned per token forever, so before anyone rolls
-    /// against it every entrypoint `roll` and `tokenURI` depend on must answer: the
-    /// plain path, the 1/1 path, a pinned path, and the pin, count and luck helpers.
-    /// It must also know every 1/1 still in the pool.
+    /// against it every entrypoint `reveal` and `tokenURI` depend on must answer: one
+    /// full tokenURI, the meta reads of the 1/1 path and of a pinned path (attributes,
+    /// cheap: no pixels, so the deploy stays under the RPC gas cap), and the pin, count
+    /// and luck helpers. It must also know every 1/1 still in the pool.
     /// @return ones how many 1/1s the renderer knows
     function _checkRenderer(address renderer_, uint256 minOnes) internal view returns (uint256 ones) {
         if (renderer_.code.length == 0) revert BadRenderer(renderer_);
@@ -93,9 +94,9 @@ contract OneNFT is ERC721, Ownable {
         if (ones < minOnes) revert BadRenderer(renderer_);
         if (!r.pinsOk(NO_PINS) || r.pinCount(NO_PINS) != 0 || r.luckyFor(1, 0, 1) != NO_ONE) revert BadRenderer(renderer_);
         if (bytes(r.tokenURI(1, 1, NO_PINS, NO_ONE)).length < 64) revert BadRenderer(renderer_);
-        if (ones > 0 && bytes(r.tokenURI(1, 1, NO_PINS, 0)).length < 64) revert BadRenderer(renderer_);
+        if (ones > 0 && bytes(r.attributes(1, NO_PINS, uint8(ones - 1))).length < 16) revert BadRenderer(renderer_);
         uint64 onePin = 0x00ffffffffffffff; // background item 0
-        if (!r.pinsOk(onePin) || r.pinCount(onePin) != 1 || bytes(r.tokenURI(1, 1, onePin, NO_ONE)).length < 64) revert BadRenderer(renderer_);
+        if (!r.pinsOk(onePin) || r.pinCount(onePin) != 1 || bytes(r.attributes(1, onePin, NO_ONE)).length < 16) revert BadRenderer(renderer_);
     }
 
     // ---- clock and price ----

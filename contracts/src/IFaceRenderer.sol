@@ -6,6 +6,8 @@ pragma solidity ^0.8.28;
 interface IFaceRenderer {
     function tokenURI(uint256 tokenId, uint64 seed, uint64 pins, uint8 one) external view returns (string memory);
     function svg(uint64 seed, uint64 pins, uint8 one) external view returns (string memory);
+    /// @return the attributes JSON array body; cheap (no pixels), exercises the meta reads of that path
+    function attributes(uint64 seed, uint64 pins, uint8 one) external view returns (string memory);
     /// @return true when every set pin names a common or uncommon item of a pinnable slot
     function pinsOk(uint64 pins) external view returns (bool);
     function pinCount(uint64 pins) external pure returns (uint256);

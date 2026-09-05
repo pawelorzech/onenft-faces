@@ -451,6 +451,16 @@ contract FaceRenderer is IFaceRenderer {
         out = string.concat(out, ",", attr("Rarity", rarityOf(m, L, t)));
     }
 
+    /// @notice The attributes alone, with the palette computed too: every meta read of a path without the pixels.
+    function attributes(uint64 seed, uint64 pins, uint8 one) external view returns (string memory) {
+        bytes memory m = DataStore.read(meta);
+        Layout memory L = layout(m);
+        Traits memory t = traitsOf(m, L, seed, pins, one);
+        uint256[25] memory pal = paletteOf(m, L, t);
+        if (pal[1] == 0) revert BadData("palette", 1);
+        return attributesOf(m, L, t);
+    }
+
     function json(uint256 tokenId, uint64 seed, uint64 pins, uint8 one) public view returns (string memory) {
         bytes memory m = DataStore.read(meta);
         Layout memory L = layout(m);
