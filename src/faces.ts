@@ -31,8 +31,6 @@ export function weightsOf(items: Item[]): number[] {
   return w;
 }
 export const WEIGHTS = SLOTS.map((s) => weightsOf(s.items));
-/** Skin tones draw through tiers too; the other colours are uniform. */
-export const SKIN_WEIGHTS = () => weightsOf(SKINS as unknown as Item[]);
 
 export function pickWeighted(w: number[], roll: number): number {
   let acc = 0;
@@ -49,6 +47,8 @@ export const SKINS: Swatch[] = [
   sw("Ebony", "#3e2a20", "#291a12", "#5a4235"), sw("Mint", "#9fd3a2", "#6fa874", "#c6e8c6", "uncommon"), sw("Sky", "#9db8e0", "#6f8fc0", "#c3d5ee", "uncommon"),
   sw("Lilac", "#c3a8d9", "#9a7fb5", "#dcc9e8", "uncommon"), sw("Ash", "#b8b6ad", "#8d8b83", "#d3d1c9", "rare"), sw("Gold", "#e3c15a", "#b8953a", "#f0da93", "legendary"),
 ];
+/** Skin tones draw through tiers too; the other colours are uniform. */
+export const SKIN_WEIGHTS = weightsOf(SKINS as unknown as Item[]);
 export const HAIRS: Swatch[] = [
   sw("Black", "#2a2320", "#171311", "#4a403b"), sw("Brown", "#5b3a22", "#3f2716", "#7f5636"), sw("Chestnut", "#8a5a2b", "#65401c", "#a97844"),
   sw("Blond", "#dcb96a", "#b8944a", "#ecd39a"), sw("Ginger", "#cc4f2c", "#9e3a1f", "#e07a5a"), sw("Silver", "#e2ddd1", "#b6b0a3", "#f2efe8"),
@@ -74,31 +74,57 @@ export const ACCENTS: Swatch[] = [
 const OUTLINE = "#1c1a19", WHITE = "#f6f4ee", RED = "#d9534f";
 
 export type Traits = { items: number[]; skin: number; hair: number; top: number; ground: number; accent: number; one?: number };
-/** One roll in 10,000 lands in the 1/1 pool while it has anything left. */
-export const ONE_OF_ONE_CHANCE = 1;
+/** Pins by slot name, pinnable slots only, common or uncommon items only. */
 export type Pins = Partial<Record<string, number>>;
+export const PINNABLE = SLOTS.map((s, i) => (s.pinnable ? i : -1)).filter((i) => i >= 0);
+export const NO_PIN = 0xff;
+/** One roll in 10,000 lands in the 1/1 pool while it has anything left and no pin is set. */
+export const ONE_OF_ONE_CHANCE = 1;
+export const PIN_PRICES_WEI = [0n, 500_000_000_000_000n, 1_500_000_000_000_000n, 4_000_000_000_000_000n];
 
-/** Draws from the seed: one per slot then the colours, each mix64(seed + i) mod range. */
-export function traitsOf(seed: bigint, pins: Pins = {}): Traits {
-  let i = 0n;
-  const draw = (range: number) => Number(mix64((seed + i++) & U64) % BigInt(range));
+export function pinOk(slot: number, item: number): boolean {
+  const s = SLOTS[slot];
+  if (!s?.pinnable) return false;
+  const t = s.items[item]?.tier;
+  return t === "common" || t === "uncommon";
+}
+/** uint32: one byte per pinnable slot in PINNABLE order, 0xff for none. */
+export function packPins(pins: Pins): number {
+  let v = 0;
+  PINNABLE.forEach((slot, k) => { const p = pins[SLOTS[slot].slot]; v |= ((p === undefined ? NO_PIN : p) & 0xff) << (8 * (3 - k)); });
+  return v >>> 0;
+}
+export function unpackPins(v: number): Pins {
+  const out: Pins = {};
+  PINNABLE.forEach((slot, k) => { const b = (v >>> (8 * (3 - k))) & 0xff; if (b !== NO_PIN) out[SLOTS[slot].slot] = b; });
+  return out;
+}
+export const pinCount = (pins: Pins) => Object.keys(pins).length;
+
+/** Draws from the seed: one per slot, then skin, hair, top, ground, accent; draw i is mix64(seed + i) mod range. */
+export const S = SLOTS.length;
+export function draws(seed: bigint): number[] {
+  return Array.from({ length: S + 7 }, (_, i) => Number(mix64((seed + BigInt(i)) & U64) % 10000n));
+}
+/** Draws S+5 and S+6 decide the 1/1: lucky when draw S+5 < ONE_OF_ONE_CHANCE, pool index draw S+6 mod pool length. */
+export function luckyOf(seed: bigint, poolLength: number): number | undefined {
+  const d = draws(seed);
+  if (d[S + 5] >= ONE_OF_ONE_CHANCE || poolLength === 0) return undefined;
+  return d[S + 6] % poolLength;
+}
+export function traitsOf(seed: bigint, pins: Pins = {}, one?: number): Traits {
+  const d = draws(seed);
   const items = SLOTS.map((s, k) => {
-    const rolled = pickWeighted(WEIGHTS[k], draw(10000));
+    const rolled = pickWeighted(WEIGHTS[k], d[k]);
     const pin = pins[s.slot];
     if (pin === undefined) return rolled;
-    if (!s.pinnable) throw new Error(`${s.slot} is not pinnable`);
-    const t = s.items[pin]?.tier;
-    if (t !== "common" && t !== "uncommon") throw new Error(`${s.slot} ${pin} cannot be pinned`);
+    if (!pinOk(k, pin)) throw new Error(`${s.slot} ${pin} cannot be pinned`);
     return pin;
   });
-  const skin = pickWeighted(SKIN_WEIGHTS(), draw(10000));
-  const t: Traits = { items, skin, hair: draw(HAIRS.length), top: draw(TOPCOLORS.length), ground: draw(GROUNDS.length), accent: draw(ACCENTS.length) };
-  const lucky = draw(10000) < ONE_OF_ONE_CHANCE;
-  if (lucky && Object.keys(pins).length === 0 && pool.length) t.one = pool[draw(pool.length)];
+  const t: Traits = { items, skin: pickWeighted(SKIN_WEIGHTS, d[S]), hair: d[S + 1] % HAIRS.length, top: d[S + 2] % TOPCOLORS.length, ground: d[S + 3] % GROUNDS.length, accent: d[S + 4] % ACCENTS.length };
+  if (one !== undefined) t.one = one;
   return t;
 }
-/** Index of every 1/1 still unminted; the contract keeps the real one. */
-export const pool: number[] = ONE_OF_ONES.map((_, i) => i);
 
 /** Palette indices: 0 none, 1 outline, 2 white, 3 red, then 3 per group (main, shade, light): skin 4, hair 7, top 10, ground 13, accent 16. */
 export function paletteOf(t: Traits): string[] {
@@ -151,7 +177,7 @@ export function composite(t: Traits): Uint8Array {
   return out;
 }
 
-export function svgOf(t: Traits, px = 320): string {
+export function svgOf(t: Traits, px = 512): string {
   const pal = paletteOf(t), map = composite(t);
   let rects = "";
   for (let y = 0; y < N; y++) {
@@ -174,9 +200,25 @@ export function attributesOf(t: Traits): { trait_type: string; value: string; ti
   return a;
 }
 
-export function face(seed: bigint, pins: Pins = {}) {
-  const t = traitsOf(seed, pins);
+export function face(seed: bigint, pins: Pins = {}, one?: number) {
+  const t = traitsOf(seed, pins, one);
   return { traits: t, svg: svgOf(t), attributes: attributesOf(t) };
+}
+
+const TIER_RANK: Record<Tier, number> = { common: 0, uncommon: 1, rare: 2, legendary: 3 };
+export function rarityOf(t: Traits): Tier {
+  if (t.one !== undefined) return "legendary";
+  let best: Tier = SKINS[t.skin].tier;
+  SLOTS.forEach((s, k) => { const tier = s.items[t.items[k]].tier; if (TIER_RANK[tier] > TIER_RANK[best]) best = tier; });
+  return best;
+}
+export const DESCRIPTION = "One face a day per wallet, rolled on chain. Pin what you want, luck does the rest. faces.onenft.click";
+/** The token JSON, byte for byte what the contract returns before base64. */
+export function metadataOf(tokenId: number | bigint, t: Traits): string {
+  const attrs = attributesOf(t).map((a) => `{"trait_type":"${a.trait_type}","value":"${a.value}"}`);
+  attrs.push(`{"trait_type":"Rarity","value":"${rarityOf(t)}"}`);
+  const image = "data:image/svg+xml;base64," + Buffer.from(svgOf(t, 512)).toString("base64");
+  return `{"name":"Face #${tokenId}","description":"${DESCRIPTION}","image":"${image}","attributes":[${attrs.join(",")}]}`;
 }
 
 export function combinations(): bigint {

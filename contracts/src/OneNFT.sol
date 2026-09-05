@@ -3,122 +3,149 @@ pragma solidity ^0.8.28;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IDayRenderer} from "./IDayRenderer.sol";
+import {IFaceRenderer} from "./IFaceRenderer.sol";
 
-/// @title OneNFT, one knot a day
-/// @notice The chain is the clock: a day is `block.timestamp / 86400`, one calendar
-/// day in UTC. Each day exactly one token can be claimed, numbered by the day.
-/// A day nobody claims stays empty forever; there are no second chances.
+/// @title OneNFT, one face a day per wallet
+/// @notice Every wallet may roll one face per UTC day, free. A roll may pin up to
+/// three of the pinnable layers (background, top, eyes, hair) to a common or
+/// uncommon item for a fee that rises with the number of pins; the rest is luck.
+/// A roll with no pins may land on a 1/1, once each, until the pool is empty.
+/// The author's wallet gets one free roll a day too, which anyone may trigger.
+/// Supply stops at MAX_SUPPLY.
 ///
-/// Every tenth day up to and including 1000 belongs to the author: `claim()` on
-/// such a day mints to the author, not to the caller. Stated from day one.
-///
-/// The renderer is a separate contract. Its address is stored per token at claim
-/// time, so `setRenderer` touches future days only; a claimed knot never changes.
-/// `lockRenderer` closes even that door, one way.
+/// The image is drawn by a separate renderer from the seed, the pins and the
+/// 1/1 index stored per token. The renderer address is stored per token at
+/// roll time, so `setRenderer` touches future rolls only. `lockRenderer`
+/// closes even that door, one way.
 contract OneNFT is ERC721, Ownable {
     uint256 public constant EPOCH_SECONDS = 86400;
-    uint256 public constant AUTHOR_UNTIL_DAY = 1000;
+    uint256 public constant MAX_SUPPLY = 10000;
+    uint8 public constant NO_ONE = 255;
+    uint32 public constant NO_PINS = 0xffffffff;
 
-    uint256 public immutable startEpoch;
     address public immutable author;
-
     address public renderer;
     bool public rendererLocked;
-    mapping(uint256 tokenId => address) public rendererOf;
+    uint256 public totalSupply;
 
-    event Claimed(uint256 indexed day, address indexed to, uint256 epoch, address renderer);
+    struct Face {
+        uint64 seed;
+        uint32 pins;
+        uint8 one;
+        address renderer;
+    }
+
+    mapping(uint256 tokenId => Face) public faces;
+    mapping(address wallet => uint256 epoch) public lastRollEpoch;
+    /// @dev Indices of the 1/1s still unrolled; swap-and-pop on a hit.
+    uint8[] public pool;
+
+    event Rolled(uint256 indexed tokenId, address indexed to, uint64 seed, uint32 pins, uint8 one, uint256 paid);
     event RendererSet(address indexed renderer);
     event RendererLocked();
 
-    error BeforeFirstDay();
-    error DayAlreadyClaimed(uint256 day);
+    error SoldOut();
+    error OneRollADay(address wallet, uint256 nextEpoch);
+    error BadPins(uint32 pins);
+    error WrongPrice(uint256 want, uint256 got);
+    error PayoutFailed();
     error RendererIsLocked();
     error BadRenderer(address renderer);
-    error BadStartEpoch(uint256 startEpoch, uint256 currentEpoch);
     error OwnershipIsPermanent();
 
-    constructor(
-        string memory name_,
-        string memory symbol_,
-        uint256 startEpoch_,
-        address author_,
-        address renderer_
-    ) ERC721(name_, symbol_) Ownable(author_) {
-        // Day 1 must be the current epoch or one of the next seven. A late deploy
-        // would otherwise skip days silently, and startEpoch is immutable.
-        uint256 now_ = block.timestamp / EPOCH_SECONDS;
-        if (startEpoch_ < now_ || startEpoch_ > now_ + 7) revert BadStartEpoch(startEpoch_, now_);
-        _checkRenderer(renderer_, startEpoch_);
-        startEpoch = startEpoch_;
+    constructor(string memory name_, string memory symbol_, address author_, address renderer_) ERC721(name_, symbol_) Ownable(author_) {
+        _checkRenderer(renderer_);
         author = author_;
         renderer = renderer_;
+        uint256 n = IFaceRenderer(renderer_).oneOfOneCount();
+        for (uint256 i = 0; i < n; i++) pool.push(uint8(i));
         emit RendererSet(renderer_);
     }
 
     /// @dev A renderer address is pinned per token forever, so it must be a live
-    /// contract that answers tokenURI() before we let anyone claim against it.
-    /// 96 bytes is the ABI floor for a non-empty string return.
-    function _checkRenderer(address renderer_, uint256 epoch) internal view {
+    /// contract that answers tokenURI() before we let anyone roll against it.
+    function _checkRenderer(address renderer_) internal view {
         if (renderer_.code.length == 0) revert BadRenderer(renderer_);
-        (bool ok, bytes memory out) = renderer_.staticcall(abi.encodeCall(IDayRenderer.tokenURI, (1, epoch)));
+        (bool ok, bytes memory out) = renderer_.staticcall(abi.encodeCall(IFaceRenderer.tokenURI, (1, 1, NO_PINS, NO_ONE)));
         if (!ok || out.length < 96) revert BadRenderer(renderer_);
     }
 
-    // ---- clock ----
+    // ---- clock and price ----
 
     function currentEpoch() public view returns (uint256) {
         return block.timestamp / EPOCH_SECONDS;
     }
 
-    /// @return 0 before day one, then 1, 2, 3, ...
-    function currentDay() public view returns (uint256) {
-        uint256 e = currentEpoch();
-        return e < startEpoch ? 0 : e - startEpoch + 1;
-    }
-
-    function epochOf(uint256 day) public view returns (uint256) {
-        return startEpoch + day - 1;
-    }
-
-    /// @return Seconds until midnight UTC, the end of the current day.
+    /// @return Seconds until midnight UTC, when every wallet may roll again.
     function secondsLeft() public view returns (uint256) {
         return (currentEpoch() + 1) * EPOCH_SECONDS - block.timestamp;
     }
 
-    function isAuthorDay(uint256 day) public pure returns (bool) {
-        return day % 10 == 0 && day <= AUTHOR_UNTIL_DAY;
+    function canRoll(address wallet) public view returns (bool) {
+        return lastRollEpoch[wallet] < currentEpoch() && totalSupply < MAX_SUPPLY;
     }
 
-    // ---- claiming ----
-
-    function claimed(uint256 day) public view returns (bool) {
-        return _ownerOf(day) != address(0);
+    /// @notice 0, 0.0005, 0.0015 or 0.004 ETH for zero to three pins.
+    function priceOf(uint32 pins) public view returns (uint256) {
+        uint256 n = IFaceRenderer(renderer).pinCount(pins);
+        if (n == 0) return 0;
+        if (n == 1) return 0.0005 ether;
+        if (n == 2) return 0.0015 ether;
+        return 0.004 ether;
     }
 
-    /// @notice Takes today's day. Free; you pay gas only.
-    /// @dev On an author day (day % 10 == 0, day <= 1000) the token goes to `author`
-    /// no matter who calls. The caller pays gas and gets nothing; the site hides the
-    /// button on those days. This keeps author days claimable by anyone, so they are
-    /// never lost because the author was away.
-    function claim() external returns (uint256 day) {
-        day = currentDay();
-        if (day == 0) revert BeforeFirstDay();
-        if (claimed(day)) revert DayAlreadyClaimed(day);
-        address to = isAuthorDay(day) ? author : msg.sender;
-        rendererOf[day] = renderer;
-        // _mint, not _safeMint: the receiver calls claim() themselves, and after
-        // EIP-7702 a normal wallet can be an account with delegation code that
-        // does not answer onERC721Received.
-        _mint(to, day);
-        emit Claimed(day, to, epochOf(day), renderer);
+    function poolLeft() external view returns (uint256) {
+        return pool.length;
+    }
+
+    // ---- rolling ----
+
+    /// @notice Roll today's face for yourself. Free with no pins; pinned rolls cost `priceOf(pins)`, sent to the author.
+    /// @param pins one byte per pinnable slot, high byte first, 255 for none
+    function roll(uint32 pins) external payable returns (uint256 tokenId) {
+        uint256 price = priceOf(pins);
+        if (msg.value != price) revert WrongPrice(price, msg.value);
+        if (pins != NO_PINS && !IFaceRenderer(renderer).pinsOk(pins)) revert BadPins(pins);
+        tokenId = _roll(msg.sender, pins);
+        if (price > 0) {
+            (bool ok,) = author.call{value: price}("");
+            if (!ok) revert PayoutFailed();
+        }
+    }
+
+    /// @notice The author's daily roll. Anyone may call; the face goes to the author.
+    function rollForTreasury() external returns (uint256 tokenId) {
+        tokenId = _roll(author, NO_PINS);
+    }
+
+    function _roll(address to, uint32 pins) internal returns (uint256 tokenId) {
+        if (totalSupply >= MAX_SUPPLY) revert SoldOut();
+        uint256 epoch = currentEpoch();
+        if (lastRollEpoch[to] >= epoch) revert OneRollADay(to, (lastRollEpoch[to] + 1) * EPOCH_SECONDS);
+        lastRollEpoch[to] = epoch;
+        tokenId = ++totalSupply;
+        uint64 seed = uint64(uint256(keccak256(abi.encodePacked(block.prevrandao, to, tokenId, block.number))));
+        uint8 one = NO_ONE;
+        if (pins == NO_PINS && pool.length > 0) {
+            uint8 lucky = uint8(IFaceRenderer(renderer).luckyFor(seed, pool.length));
+            if (lucky != NO_ONE) {
+                one = pool[lucky];
+                pool[lucky] = pool[pool.length - 1];
+                pool.pop();
+            }
+        }
+        faces[tokenId] = Face(seed, pins, one, renderer);
+        // _mint, not _safeMint: after EIP-7702 a normal wallet can carry delegation
+        // code that does not answer onERC721Received.
+        _mint(to, tokenId);
+        emit Rolled(tokenId, to, seed, pins, one, msg.value);
     }
 
     // ---- renderer ----
 
     function setRenderer(address renderer_) external onlyOwner {
         if (rendererLocked) revert RendererIsLocked();
-        _checkRenderer(renderer_, currentEpoch());
+        _checkRenderer(renderer_);
         renderer = renderer_;
         emit RendererSet(renderer_);
     }
@@ -136,11 +163,14 @@ contract OneNFT is ERC721, Ownable {
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         _requireOwned(tokenId);
-        return IDayRenderer(rendererOf[tokenId]).tokenURI(tokenId, epochOf(tokenId));
+        Face memory f = faces[tokenId];
+        return IFaceRenderer(f.renderer).tokenURI(tokenId, f.seed, f.pins, f.one);
     }
 
-    /// @notice Preview of any day's knot, claimed or not, with the current renderer.
-    function preview(uint256 day) external view returns (string memory) {
-        return IDayRenderer(renderer).svg(epochOf(day));
+    function svgOf(uint256 tokenId) external view returns (string memory) {
+        _requireOwned(tokenId);
+        Face memory f = faces[tokenId];
+        return IFaceRenderer(f.renderer).svg(f.seed, f.pins, f.one);
     }
 }
+
