@@ -29,13 +29,17 @@ contract FaceRendererTest is Test {
         for (uint256 i = 0; i < b.length; i++) n = n * 10 + (uint8(b[i]) - 48);
     }
 
-    /// Fixtures from `bun run contracts/fixtures.ts`. TypeScript is the source of truth.
-    function test_SvgAndJsonMatchTypeScriptByteForByte() public view {
-        string memory json = vm.readFile("test/fixtures/faces_cases.json");
-        uint256 count = 0;
+    function caseCount(string memory json) internal view returns (uint256 count) {
         while (vm.keyExistsJson(json, string.concat("$[", count.toString(), "].seed"))) count++;
+    }
+
+    /// Fixtures from `bun run contracts/fixtures.ts`. TypeScript is the source of truth.
+    /// Split in three so one test's memory stays under the EVM limit (each case renders 64 kB twice).
+    function checkCases(uint256 from, uint256 to) internal view {
+        string memory json = vm.readFile("test/fixtures/faces_cases.json");
+        uint256 count = caseCount(json);
         assertGt(count, 15);
-        for (uint256 i = 0; i < count; i++) {
+        for (uint256 i = from; i < to && i < count; i++) {
             string memory k = string.concat("$[", i.toString(), "]");
             uint64 seed = uint64(parseUint(vm.parseJsonString(json, string.concat(k, ".seed"))));
             uint64 pins = uint64(parseUint(vm.parseJsonString(json, string.concat(k, ".pins"))));
@@ -45,10 +49,13 @@ contract FaceRendererTest is Test {
         }
     }
 
+    function test_SvgAndJsonMatchTypeScriptByteForByte_A() public view { checkCases(0, 22); }
+    function test_SvgAndJsonMatchTypeScriptByteForByte_B() public view { checkCases(22, 44); }
+    function test_SvgAndJsonMatchTypeScriptByteForByte_C() public view { checkCases(44, 100); }
+
     function test_LuckySeedFromFixturesHitsThePool() public view {
         string memory json = vm.readFile("test/fixtures/faces_cases.json");
-        uint256 count = 0;
-        while (vm.keyExistsJson(json, string.concat("$[", count.toString(), "].seed"))) count++;
+        uint256 count = caseCount(json);
         string memory k = string.concat("$[", (count - 1).toString(), "]");
         uint64 seed = uint64(parseUint(vm.parseJsonString(json, string.concat(k, ".seed"))));
         uint256 one = vm.parseJsonUint(json, string.concat(k, ".one"));

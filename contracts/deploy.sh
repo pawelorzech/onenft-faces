@@ -16,8 +16,8 @@ DEPLOYER=$(cast wallet address --private-key "$PK")
 BAL=$(cast balance "$DEPLOYER" --rpc-url "$RPC" --ether)
 echo "network $NET  deployer $DEPLOYER  balance $BAL ETH  author $AUTHOR"
 LOG="/tmp/onenft-faces-deploy-$NET.log"
-AUTHOR=$AUTHOR forge script script/Deploy.s.sol --rpc-url "$RPC" --broadcast --private-key "$PK" \
-  --verify --verifier sourcify 2>&1 | tee "$LOG" | grep -E "store|meta|FaceRenderer|OneNFT|verif|Error" || true
+# No --verify here: forge cannot decode the address[] constructor argument for verification and then skips the broadcast. Verify by hand.
+AUTHOR=$AUTHOR forge script script/Deploy.s.sol --rpc-url "$RPC" --broadcast --private-key "$PK" 2>&1 | tee "$LOG" | grep -E "store|meta|FaceRenderer|OneNFT|ONCHAIN|Error" || true
 unset PK
 get() { grep -E "^\s*$1 " "$LOG" | head -1 | awk '{print $2}'; }
 N=$(jq -r '.stores | length' test/fixtures/faces_data.json)
