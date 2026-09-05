@@ -33,10 +33,19 @@ contract OneNFTTest is Test {
         vm.deal(bob, 1 ether);
     }
 
+    /// @dev Two blocks on, with a hash for the block in between: Foundry serves no hashes for rolled-over blocks unless told.
+    /// The commit block is kept in storage because via_ir re-reads a local copy of block.number after vm.roll.
+    uint256 private _b;
+    function _advance() internal {
+        _b = block.number;
+        vm.roll(_b + 2);
+        vm.setBlockhash(_b + 1, keccak256(abi.encode(_b + 1)));
+    }
+
     function rollFor(address who, uint128 pins, uint256 value) internal returns (uint256 id) {
         vm.prank(who);
         nft.commit{value: value}(pins);
-        vm.roll(block.number + 1);
+        _advance();
         id = nft.reveal(who);
     }
 
@@ -58,10 +67,13 @@ contract OneNFTTest is Test {
         vm.prank(alice);
         nft.commit(NONE);
         assertEq(nft.pending(), 1);
-        assertEq(nft.revealBlockOf(alice), block.number + 1);
-        vm.expectRevert(abi.encodeWithSelector(OneNFT.TooEarly.selector, alice, block.number + 1));
+        assertEq(nft.revealBlockOf(alice), block.number + 2);
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.TooEarly.selector, alice, block.number + 2));
         nft.reveal(alice);
         vm.roll(block.number + 1);
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.TooEarly.selector, alice, block.number + 1));
+        nft.reveal(alice);
+        _advance();
         vm.prank(bob); // anyone may reveal for anyone
         nft.reveal(alice);
         assertEq(nft.pending(), 0);
@@ -77,7 +89,7 @@ contract OneNFTTest is Test {
         vm.prank(alice);
         vm.expectRevert();
         nft.commit(NONE);
-        vm.roll(block.number + 1);
+        _advance();
         uint256 id = nft.reveal(alice);
         (uint64 seed,,,) = nft.faces(id);
         assertGt(seed, 0);
@@ -121,12 +133,12 @@ contract OneNFTTest is Test {
         vm.prank(alice);
         vm.expectRevert();
         nft.commitForTreasury();
-        vm.roll(block.number + 1);
+        _advance();
         uint256 id = nft.reveal(author);
         assertEq(nft.ownerOf(id), author);
         vm.warp(block.timestamp + EB);
         nft.commitForTreasury();
-        vm.roll(block.number + 1);
+        _advance();
         nft.reveal(author);
         assertEq(nft.balanceOf(author), 2);
     }
@@ -146,7 +158,7 @@ contract OneNFTTest is Test {
             address w = address(uint160(0x1000 + i));
             vm.prank(w);
             nft.commit(NONE);
-            vm.roll(block.number + 1);
+            _advance();
             uint256 id = nft.reveal(w);
             (,, uint8 one,) = nft.faces(id);
             if (one != 255) hits++;
@@ -164,7 +176,7 @@ contract OneNFTTest is Test {
         vm.prank(bob);
         vm.expectRevert(OneNFT.SoldOut.selector);
         nft.commit(NONE);
-        vm.roll(block.number + 1);
+        _advance();
         assertEq(nft.reveal(alice), 10000);
     }
 

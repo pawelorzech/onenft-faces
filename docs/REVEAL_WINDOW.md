@@ -1,6 +1,10 @@
 # The reveal window of the deployed contract
 
-Last verified: local source at commit 8a3678a, mainnet bytecode read 2026-09-05 | 2026-09-05
+Last verified: mainnet bytecode read 2026-09-05; second contract deployed 2026-09-06 | 2026-09-06
+
+## Resolution (2026-09-06)
+
+Option 2 + 3 below was taken: a second token contract, `0x7C745F4eA367A7A3CD596219A4E428F2eA9A8C4c` on Base mainnet, with the same renderer and stores. Changes in `OneNFT.sol`: the reveal is allowed from block B + 2 (the hash of B + 1 exists) to B + 256 (the EVM still serves it); past that anyone may `renew`, which moves the commit to the current block, keeps the pins and the fee, and starts the two-block wait again; a missing hash reverts (`NoHash`) instead of minting; the token id is no longer in the seed, so the order of reveals changes nothing. `RevealWindow.t.sol` was rewritten for the new rules (7 tests). A Sepolia smoke test committed, waited, revealed and minted token 1 with a seed that matched an off-chain computation from the block hash. The first contract keeps its two faces and is retired. The rest of this document describes the first contract.
 
 This is a finding from the local source, checked against the deployed bytecode by a read-only comparison. It is not a full audit, and no attack was run against production. The contract is immutable; nothing here changes it. The site's copy and keeper were changed so that they do not promise what the contract does not give.
 

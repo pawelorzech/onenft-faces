@@ -30,6 +30,8 @@ export type Receipt = { status: "success" | "reverted"; logs: { address: Address
 export type KeeperDeps = {
   canRoll(who: Address): Promise<RollCheck>;
   sendReveal(who: Address): Promise<Hex>;
+  /** Moves a commit past its 256-block window to the current block. */
+  sendRenew(who: Address): Promise<Hex>;
   sendTreasuryCommit(): Promise<Hex>;
   getReceipt(hash: Hex): Promise<Receipt | null>;
   /** Whether the node still knows the transaction (pending or mined). False means it was dropped. */
@@ -67,7 +69,7 @@ export type RevealResult = {
   reason?: string;
 };
 
-type Pending = { hash: Hex; sentAt: number; attempts: number; kind: "reveal" | "commit" };
+type Pending = { hash: Hex; sentAt: number; attempts: number; kind: "reveal" | "commit" | "renew" };
 
 export type KeeperOptions = {
   /** After this long without a receipt a send reads as unknown. */
@@ -138,8 +140,29 @@ export class Keeper {
     }
 
     if (!revealDue(check.revealBlock, check.head)) return { ...base, state: "waiting" };
+    // Past the window the hash is gone; renew moves the commit to the current block and the wait starts again. Never lost, never from a zero hash.
+    if (check.lastRevealBlock > 0 && check.head > check.lastRevealBlock) {
+      if (p?.kind === "renew") {
+        const r = await this.receipt(p.hash);
+        if (!r && this.deps.now() - p.sentAt < this.o.unknownAfterMs) return { ...base, state: "waiting", hash: p.hash, reason: "renewing the commit" };
+        this.pending.delete(key);
+      }
+      if (!send) return { ...base, state: "waiting", reason: "the window passed; the commit needs a renew" };
+      try {
+        const hash = await this.send(() => this.deps.sendRenew(who));
+        this.pending.set(key, { hash, sentAt: this.deps.now(), attempts: 1, kind: "renew" });
+        this.deps.log(`keeper: renewed the commit of ${who}, tx ${hash}`);
+        return { ...base, state: "waiting", hash, reason: "renewing the commit" };
+      } catch (e) {
+        return { ...base, state: "failed", reason: scrubError(e) };
+      }
+    }
 
-    if (p) {
+    // A settled renew is not a reveal: forget it and reveal.
+    if (p?.kind === "renew" && (await this.receipt(p.hash))) this.pending.delete(key);
+    const q = this.pending.get(key);
+    if (q && q.kind !== "renew") {
+      const p = q;
       const r = await this.receipt(p.hash);
       const age = this.deps.now() - p.sentAt;
       if (r?.status === "success") {
@@ -254,6 +277,7 @@ export function startAutoclaim(key: Hex, everyMs = 60_000): void {
   keeper = new Keeper({
     canRoll,
     sendReveal: (who) => wallet.writeContract({ address: CONTRACT as Address, abi: ABI, functionName: "reveal", args: [who], chain, account }),
+    sendRenew: (who) => wallet.writeContract({ address: CONTRACT as Address, abi: ABI, functionName: "renew", args: [who], chain, account }),
     sendTreasuryCommit: () => wallet.writeContract({ address: CONTRACT as Address, abi: ABI, functionName: "commitForTreasury", chain, account }),
     getReceipt: async (hash) => {
       try {

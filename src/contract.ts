@@ -35,6 +35,8 @@ export const ABI = parseAbi([
   "function pending() view returns (uint256)",
   "function commits(address wallet) view returns (uint128 pins, uint64 blockNumber, uint64 paid)",
   "function revealBlockOf(address wallet) view returns (uint256)",
+  "function lastRevealBlockOf(address wallet) view returns (uint256)",
+  "function renew(address wallet)",
   "function commit(uint128 pins) payable",
   "function commitForTreasury()",
   "function reveal(address wallet) returns (uint256)",
@@ -179,17 +181,17 @@ export function chainStatus(): ChainStatus {
   return { configured: contractEnabled(), known: s.known, stale: s.stale, readAt: s.readAt, ageSeconds: s.ageSeconds, error: s.error, errorAt: s.errorAt, scannedBlock: scanned.toString(), scanned: scannedOnce };
 }
 
-export type RollCheck = { canRoll: boolean; lastRollEpoch: number; revealBlock: number; head: number; epoch: number; soldOut: boolean };
+export type RollCheck = { canRoll: boolean; lastRollEpoch: number; revealBlock: number; lastRevealBlock: number; head: number; epoch: number; soldOut: boolean };
 
 /** One wallet's standing, read live: never from the cache, because a roll in progress changes it block by block. Throws when the RPC does not answer. */
 export async function canRoll(wallet: Address): Promise<RollCheck> {
   if (!client || !CONTRACT) throw new Error("no contract configured");
   const c = { address: CONTRACT, abi: ABI } as const;
-  const [[ok, last, rb, epoch, total, pending], head] = await Promise.all([
-    client.multicall({ contracts: [{ ...c, functionName: "canRoll", args: [wallet] }, { ...c, functionName: "lastRollEpoch", args: [wallet] }, { ...c, functionName: "revealBlockOf", args: [wallet] }, { ...c, functionName: "currentEpoch" }, { ...c, functionName: "totalSupply" }, { ...c, functionName: "pending" }], allowFailure: false }),
+  const [[ok, last, rb, lrb, epoch, total, pending], head] = await Promise.all([
+    client.multicall({ contracts: [{ ...c, functionName: "canRoll", args: [wallet] }, { ...c, functionName: "lastRollEpoch", args: [wallet] }, { ...c, functionName: "revealBlockOf", args: [wallet] }, { ...c, functionName: "lastRevealBlockOf", args: [wallet] }, { ...c, functionName: "currentEpoch" }, { ...c, functionName: "totalSupply" }, { ...c, functionName: "pending" }], allowFailure: false }),
     client.getBlockNumber(),
   ]);
-  return { canRoll: ok, lastRollEpoch: Number(last), revealBlock: Number(rb), head: Number(head), epoch: Number(epoch), soldOut: Number(total) + Number(pending) >= MAX_SUPPLY };
+  return { canRoll: ok, lastRollEpoch: Number(last), revealBlock: Number(rb), lastRevealBlock: Number(lrb), head: Number(head), epoch: Number(epoch), soldOut: Number(total) + Number(pending) >= MAX_SUPPLY };
 }
 
 /** The token the Rolled event of a receipt minted for `wallet`, or null when the receipt carries none. */

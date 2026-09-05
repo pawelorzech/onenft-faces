@@ -90,7 +90,7 @@ export function specJson() {
     site: SITE,
     version: 1,
     canvas: { size: 32, bitsPerPixel: 3, roles: ["none", "outline", "fill", "shade", "light", "second", "secondShade", "white"] },
-    draw: { mixer: "splitmix64 finalizer", seed: "keccak256(blockhash(commitBlock + 1), wallet, pins, commitBlock, tokenId) as uint64", perDraw: "mix64(seed + i) mod 10000", order: [...SLOTS.map((s) => s.slot), "skin", "hairColour", "topColour", "ground", "accent", "lucky", "poolIndex"] },
+    draw: { mixer: "splitmix64 finalizer", seed: "keccak256(blockhash(commitBlock + 1), wallet, pins, commitBlock) as uint64; reveal allowed from commitBlock + 2 to commitBlock + 256, renew past that", perDraw: "mix64(seed + i) mod 10000", order: [...SLOTS.map((s) => s.slot), "skin", "hairColour", "topColour", "ground", "accent", "lucky", "poolIndex"] },
     tierWeights: TIER_WEIGHT,
     slots: SLOTS.map((s, k) => ({ slot: s.slot, trait: s.trait, pinnable: s.pinnable, group: s.group, items: s.items.map((it, i) => ({ name: it.name, tier: it.tier, weight: WEIGHTS[k][i] })) })),
     pinKeys: PIN_KEYS,
@@ -103,6 +103,6 @@ export function specJson() {
     oneOfOnes: ONE_OF_ONES.map((o) => ({ name: o.name, main: o.main, second: o.second })),
     oneOfOneOdds: "poolLeft / tokensLeft per roll, with or without pins; a one of one keeps the pinned background and ground colour and replaces every other pin",
     maxSupply: MAX_SUPPLY,
-    rule: `one roll per wallet per UTC day while supply remains, as commit then reveal from the next block on; ${pinRule()}; any roll may take a one of one with odds poolLeft / tokensLeft`,
+    rule: `one roll per wallet per UTC day while supply remains, as commit then reveal from two blocks later within 256 blocks (renew past that); ${pinRule()}; any roll may take a one of one with odds poolLeft / tokensLeft`,
   };
 }

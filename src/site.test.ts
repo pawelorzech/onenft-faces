@@ -124,7 +124,8 @@ test("prices are exact and every number in the copy comes from the constants", (
   const how = howPage(fakeChain(), 20701);
   expect(how).toContain("0.0005, 0.001, 0.002 ETH");
   expect(how).toContain("Any roll, pinned or not");
-  expect(how).toContain("reads that hash as zero");
+  expect(how).toContain("renew");
+  expect(how).toContain("The token number is not in the seed");
   expect(how).not.toContain("so nobody can peek");
 });
 

@@ -7,13 +7,11 @@ import {FaceRenderer} from "../src/FaceRenderer.sol";
 import {DataStore} from "../src/DataStore.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-/// @title What the seed of a roll depends on, block by block.
-/// @notice These tests document the deployed contract as it is. They change nothing.
-/// The reveal may be sent from block B + 1 on, where B is the commit block, and
-/// the seed mixes `blockhash(B + 1)`. Inside block B + 1 that hash reads as zero
-/// (the EVM has no hash for the current block); from B + 2 to B + 257 it is the
-/// real hash; from B + 258 on it reads as zero again (the 256-block window).
-/// The token id, which depends on the order of reveals, is part of the seed too.
+/// @title What the seed of a roll depends on, block by block (second contract).
+/// @notice The reveal is allowed from block B + 2 to B + 256, where B is the commit
+/// block; the seed is blockhash(B + 1), the wallet, the pins and B, nothing else.
+/// Inside that window the hash always exists; outside it the reveal reverts and
+/// anyone may renew the commit, which moves B to the current block.
 contract RevealWindowTest is Test {
     using Strings for uint256;
 
@@ -41,105 +39,109 @@ contract RevealWindowTest is Test {
         base = block.number;
     }
 
-    function seedOf(bytes32 hash, address wallet, uint128 pins, uint256 commitBlock, uint256 tokenId) internal pure returns (uint64) {
-        return uint64(uint256(keccak256(abi.encodePacked(hash, wallet, pins, uint64(commitBlock), tokenId))));
+    function seedOf(bytes32 hash, address wallet, uint128 pins, uint256 commitBlock) internal pure returns (uint64) {
+        return uint64(uint256(keccak256(abi.encodePacked(hash, wallet, pins, uint64(commitBlock)))));
     }
     function storedSeed(uint256 id) internal view returns (uint64 seed) {
         (seed,,,) = nft.faces(id);
     }
-
-    function test_RevealInBlockB_Reverts() public {
-        vm.prank(alice);
-        nft.commit(NONE);
-        vm.expectRevert(abi.encodeWithSelector(OneNFT.TooEarly.selector, alice, block.number + 1));
-        nft.reveal(alice);
+    function hashFor(uint256 n) internal pure returns (bytes32) {
+        return keccak256(abi.encode("block", n));
+    }
+    /// Rolls to `to` and gives block B + 1 a hash, as the chain would.
+    function go(uint256 to) internal {
+        vm.roll(to);
+        if (to > base + 1) vm.setBlockhash(base + 1, hashFor(base + 1));
     }
 
-    /// In block B + 1 the hash the seed reads is zero: the seed is a function of public inputs only.
-    function test_RevealInBlockBPlus1_UsesZeroHash() public {
+    function test_RevealInBlocksBAndBPlus1_Reverts() public {
         uint256 B = base;
         vm.prank(alice);
         nft.commit(NONE);
+        assertEq(nft.revealBlockOf(alice), B + 2);
+        assertEq(nft.lastRevealBlockOf(alice), B + 256);
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.TooEarly.selector, alice, B + 2));
+        nft.reveal(alice);
         vm.roll(B + 1);
-        assertEq(blockhash(B + 1), bytes32(0), "the current block has no hash");
-        uint256 id = nft.reveal(alice);
-        assertEq(id, 1);
-        assertEq(storedSeed(1), seedOf(bytes32(0), alice, NONE, B, 1), "seed computed from a zero hash");
-    }
-
-    /// From block B + 2 on the real hash of B + 1 is in the seed.
-    function test_RevealInBlockBPlus2_UsesRealHash() public {
-        uint256 B = base;
-        vm.prank(alice);
-        nft.commit(NONE);
-        vm.roll(B + 2);
-        vm.setBlockhash(B + 1, keccak256("block B+1"));
-        bytes32 h = blockhash(B + 1);
-        assertTrue(h != bytes32(0), "the previous block has a hash");
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.TooEarly.selector, alice, B + 2));
         nft.reveal(alice);
-        assertEq(storedSeed(1), seedOf(h, alice, NONE, B, 1));
-        assertTrue(storedSeed(1) != seedOf(bytes32(0), alice, NONE, B, 1), "differs from the zero-hash seed");
     }
 
-    /// Block B + 257 is the last block in which blockhash(B + 1) is still available.
-    function test_RevealInBlockBPlus257_LastRealHash() public {
+    /// From block B + 2 on the real hash of B + 1 is in the seed, and the token id is not.
+    function test_RevealInBlockBPlus2_UsesRealHashAndNoTokenId() public {
         uint256 B = base;
         vm.prank(alice);
         nft.commit(NONE);
+        go(B + 2);
+        nft.reveal(alice);
+        assertEq(storedSeed(1), seedOf(hashFor(B + 1), alice, NONE, B));
+    }
+
+    /// Block B + 256 is the last block a reveal is allowed in.
+    function test_RevealInBlockBPlus256_LastAllowed() public {
+        uint256 B = base;
+        vm.prank(alice);
+        nft.commit(NONE);
+        go(B + 256);
+        nft.reveal(alice);
+        assertEq(storedSeed(1), seedOf(hashFor(B + 1), alice, NONE, B));
+    }
+
+    /// From B + 257 the reveal reverts; renew moves the commit to the current block and the wait starts again.
+    function test_RevealAfterTheWindow_RevertsAndRenewRestarts() public {
+        uint256 B = base;
+        vm.prank(alice);
+        nft.commit(NONE);
+        vm.roll(B + 100);
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.NotExpired.selector, alice, B + 256));
+        nft.renew(alice);
         vm.roll(B + 257);
-        vm.setBlockhash(B + 1, keccak256("block B+1"));
-        bytes32 h = blockhash(B + 1);
-        assertTrue(h != bytes32(0), "256 blocks back is still in the window");
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.Expired.selector, alice, B + 256));
         nft.reveal(alice);
-        assertEq(storedSeed(1), seedOf(h, alice, NONE, B, 1));
+        vm.prank(bob); // anyone may renew
+        nft.renew(alice);
+        assertEq(nft.revealBlockOf(alice), B + 259);
+        assertEq(nft.pending(), 1);
+        vm.expectRevert(abi.encodeWithSelector(OneNFT.TooEarly.selector, alice, B + 259));
+        nft.reveal(alice);
+        vm.roll(B + 259);
+        vm.setBlockhash(B + 258, hashFor(B + 258));
+        nft.reveal(alice);
+        assertEq(storedSeed(1), seedOf(hashFor(B + 258), alice, NONE, B + 257));
+        assertEq(nft.ownerOf(1), alice);
+        assertEq(nft.pending(), 0);
     }
 
-    /// From block B + 258 on the hash reads as zero again, as the NatSpec says.
-    function test_RevealInBlockBPlus258_ZeroHashAgain() public {
-        uint256 B = base;
-        vm.prank(alice);
-        nft.commit(NONE);
-        vm.roll(B + 258);
-        vm.setBlockhash(B + 1, keccak256("block B+1"));
-        assertEq(blockhash(B + 1), bytes32(0), "257 blocks back is outside the window");
-        nft.reveal(alice);
-        assertEq(storedSeed(1), seedOf(bytes32(0), alice, NONE, B, 1));
-    }
-
-    /// The token id is in the seed, and the id depends on who reveals first.
-    /// Two commits in one block; revealing alice first or second gives her a different face.
-    function test_RevealOrderChangesTheSeed() public {
+    /// Two commits in one block: whoever reveals first, each wallet's face is the same.
+    function test_RevealOrderDoesNotChangeTheSeed() public {
         uint256 B = base;
         vm.prank(alice);
         nft.commit(NONE);
         vm.prank(bob);
         nft.commit(NONE);
-        vm.roll(B + 2);
-        vm.setBlockhash(B + 1, keccak256("block B+1"));
-        bytes32 h = blockhash(B + 1);
+        go(B + 2);
         uint256 snap = vm.snapshotState();
         nft.reveal(alice);
         nft.reveal(bob);
         uint64 aliceFirst = storedSeed(1);
-        assertEq(aliceFirst, seedOf(h, alice, NONE, B, 1));
+        uint64 bobSecond = storedSeed(2);
         vm.revertToState(snap);
         nft.reveal(bob);
         nft.reveal(alice);
-        uint64 aliceSecond = storedSeed(2);
-        assertEq(aliceSecond, seedOf(h, alice, NONE, B, 2));
-        assertTrue(aliceFirst != aliceSecond, "the same commit gives two different faces depending on reveal order");
+        assertEq(storedSeed(2), aliceFirst, "alice's face does not depend on the order");
+        assertEq(storedSeed(1), bobSecond, "bob's face does not depend on the order");
+        assertTrue(aliceFirst != bobSecond);
     }
 
-    /// Once the hash is known (B + 2 on) every candidate seed can be computed ahead of the reveal, one per token id.
-    function test_SeedIsComputableBeforeTheRevealOnceTheHashExists() public {
+    /// The commit block is chosen by the roller, but blockhash(B + 1) is not known when the commit is mined.
+    function test_SeedNeedsTheHashOfTheBlockAfterTheCommit() public {
         uint256 B = base;
         vm.prank(alice);
         nft.commit(NONE);
-        vm.roll(B + 2);
-        vm.setBlockhash(B + 1, keccak256("block B+1"));
-        uint64 predicted = seedOf(blockhash(B + 1), alice, NONE, B, nft.totalSupply() + 1);
+        assertEq(blockhash(B + 1), bytes32(0), "at commit time the next block has no hash yet");
+        go(B + 2);
         nft.reveal(alice);
-        assertEq(storedSeed(1), predicted, "the seed was known before the reveal transaction");
+        assertTrue(storedSeed(1) != seedOf(bytes32(0), alice, NONE, B), "a zero hash never makes a face");
     }
 
     /// The 1/1 draw runs on every reveal, pins or none.
@@ -149,11 +151,10 @@ contract RevealWindowTest is Test {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         nft.commit{value: price}(onePin);
-        vm.roll(block.number + 2);
+        go(base + 2);
         uint256 id = nft.reveal(alice);
         (uint64 seed,, uint8 one,) = nft.faces(id);
         uint256 lucky = renderer.luckyFor(seed, nft.oneOfOnes(), 10000);
-        // Whether or not this seed hit, the contract consulted the draw: `one` agrees with the renderer's answer.
         if (lucky < nft.oneOfOnes()) assertTrue(one != 255, "a hit is recorded even with pins");
         else assertEq(one, 255);
     }

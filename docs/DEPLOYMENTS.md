@@ -1,6 +1,17 @@
 # Deployments
 
-Last verified: 2026-09-05
+Last verified: 2026-09-06
+
+## Base mainnet (8453), second token contract, 2026-09-06
+
+| Contract | Address |
+|---|---|
+| OneNFT (faces.onenft.click, FACE) | `0x7C745F4eA367A7A3CD596219A4E428F2eA9A8C4c` |
+| FaceRenderer, stores, meta | unchanged, see below |
+
+Reveal from block B + 2 within 256 blocks, `renew` past that, seed without the token id (see `docs/REVEAL_WINDOW.md`). Deploy block 50928740. Submitted to Sourcify. The first contract below is retired: it keeps its two faces, mints nothing more from this site, and the keeper no longer watches it.
+
+## Base mainnet (8453), first token contract, 2026-09-05 (retired 2026-09-06)
 
 ## Base mainnet (8453), 2026-09-05
 
@@ -17,4 +28,4 @@ Author (owner, 95 percent of fees, daily treasury roll): `0x6e36Dc3ec2F9D4f3D8e6
 
 ## Base Sepolia (84532)
 
-Latest: OneNFT `0x4dF6E8778573152E373c4970995305A6A6A7E90B`, FaceRenderer `0xA5bC73727E45cb2Ad8064162343d6Fc5c868c215`; `~/.config/onenft-faces/deploy-sepolia.json` has the full record. Earlier Sepolia deployments the same day are abandoned.
+Latest: OneNFT `0x97dAb0EccDAeA046f87594A07Adea29B4423bEAe` (second contract, 2026-09-06, smoke-tested with one commit and reveal), FaceRenderer `0xA5bC73727E45cb2Ad8064162343d6Fc5c868c215`; the first token contract was `0x4dF6E8778573152E373c4970995305A6A6A7E90B`; `~/.config/onenft-faces/deploy-sepolia.json` has the full record. Earlier Sepolia deployments the same day are abandoned.

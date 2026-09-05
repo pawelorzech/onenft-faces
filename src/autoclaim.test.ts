@@ -21,17 +21,18 @@ const CONTRACT = "0x3333333333333333333333333333333333333333";
 const ROLLED_TOPIC = "0x" + "11".repeat(32) as Hex;
 
 /** A fake chain the keeper talks to: one wallet's commit, a head that moves, receipts that arrive when told. */
-function world(o: { revealBlock?: number; head?: number; epoch?: number; lastRollEpoch?: number } = {}) {
+function world(o: { revealBlock?: number; head?: number; epoch?: number; lastRollEpoch?: number; lastRevealBlock?: number } = {}) {
   const w = {
-    revealBlock: o.revealBlock ?? 101, head: o.head ?? 101, epoch: o.epoch ?? 20701, lastRollEpoch: o.lastRollEpoch ?? 20701,
+    revealBlock: o.revealBlock ?? 101, lastRevealBlock: o.lastRevealBlock ?? 355, head: o.head ?? 101, renews: [] as Address[], epoch: o.epoch ?? 20701, lastRollEpoch: o.lastRollEpoch ?? 20701,
     sends: [] as Address[], receipts: new Map<Hex, Receipt | null>(), known: new Set<Hex>(), now: 1_000_000, logToken: null as number | null, canRollFails: false, sendFails: false,
     log: [] as string[],
   };
   let n = 0;
   const deps: KeeperDeps = {
-    canRoll: async (): Promise<RollCheck> => { if (w.canRollFails) throw new Error("rpc dead http://x/key"); return { canRoll: false, lastRollEpoch: w.lastRollEpoch, revealBlock: w.revealBlock, head: w.head, epoch: w.epoch, soldOut: false }; },
+    canRoll: async (): Promise<RollCheck> => { if (w.canRollFails) throw new Error("rpc dead http://x/key"); return { canRoll: false, lastRollEpoch: w.lastRollEpoch, revealBlock: w.revealBlock, lastRevealBlock: w.lastRevealBlock, head: w.head, epoch: w.epoch, soldOut: false }; },
     sendReveal: async (who) => { if (w.sendFails) throw new Error("insufficient funds"); await new Promise((r) => setTimeout(r, 2)); w.sends.push(who); const h = ("0x" + (++n).toString(16).padStart(64, "0")) as Hex; w.known.add(h); return h; },
     sendTreasuryCommit: async () => ("0x" + "ee".repeat(32)) as Hex,
+    sendRenew: async (who) => { w.renews.push(who); const h = ("0x" + "dd".repeat(31) + w.renews.length.toString(16).padStart(2, "0")) as Hex; w.known.add(h); return h; },
     getReceipt: async (h) => w.receipts.get(h) ?? null,
     transactionKnown: async (h) => w.known.has(h),
     tokenOf: (r) => { const l = r.logs.find((x) => x.topics[0] === ROLLED_TOPIC); return l ? Number(l.topics[1]) : null; },
@@ -162,4 +163,23 @@ test("sends go one at a time through the shared account", async () => {
   await Promise.all([k.revealFor(A), k.revealFor(B), k.revealFor(C)]);
   expect(w.sends.length).toBe(3);
   expect(peak).toBe(1);
+});
+
+test("past the 256-block window the keeper renews the commit instead of revealing, once, and reveals after the new wait", async () => {
+  const { w, deps, mined } = world({ revealBlock: 101, lastRevealBlock: 355, head: 400 });
+  const k = new Keeper(deps);
+  const r1 = await k.revealFor(A);
+  expect(r1.state).toBe("waiting");
+  expect(r1.reason).toContain("renew");
+  expect(w.renews.length).toBe(1);
+  expect(w.sends.length).toBe(0);
+  // Asking again while the renew is unsettled sends nothing more.
+  expect((await k.revealFor(A)).state).toBe("waiting");
+  expect(w.renews.length).toBe(1);
+  // The renew lands: the contract now says reveal from 402, window to 656; head 402 → reveal.
+  mined(r1.hash!, null);
+  w.revealBlock = 402; w.lastRevealBlock = 656; w.head = 402;
+  const r2 = await k.revealFor(A);
+  expect(r2.state).toBe("sent");
+  expect(w.sends.length).toBe(1);
 });

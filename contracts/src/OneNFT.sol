@@ -14,9 +14,16 @@ import {IFaceRenderer} from "./IFaceRenderer.sol";
 /// roll a day too, which anyone may trigger. Supply stops at MAX_SUPPLY.
 ///
 /// A roll is two steps so nobody can try, look and revert: `commit` spends the
-/// wallet's day and the fee and fixes the pins; `reveal`, one block later, mixes
-/// the hash of the block after the commit into the seed and mints. Anyone may
-/// reveal for anyone, so the site does it and the roller signs once.
+/// wallet's day and the fee and fixes the pins; `reveal`, from two blocks later,
+/// mixes the hash of the block after the commit into the seed and mints. Anyone
+/// may reveal for anyone, so the site does it and the roller signs once.
+///
+/// The seed is `blockhash(B + 1)`, the wallet, the pins and the commit block B,
+/// and nothing else: not the token id, so the order of reveals changes nothing.
+/// A reveal is allowed only once that hash exists (block B + 2 on) and only while
+/// the EVM still serves it (block B + 256 at most); after that anyone may `renew`
+/// the commit, which moves B to the current block and starts the wait again, so
+/// a commit is never lost and a seed is never computed from a zero hash.
 ///
 /// The image is drawn by a separate renderer from the seed, the pins and the
 /// 1/1 index stored per token. The renderer address is stored per token at
@@ -34,6 +41,10 @@ contract OneNFT is ERC721, Ownable {
     uint256 public constant KEEPER_BPS = 500;
     /// @dev Size of the 1/1 pool at deploy; a new renderer must know at least this many.
     uint256 public immutable oneOfOnes;
+    /// @notice Blocks after the commit before a reveal is allowed: the hash of block B + 1 must exist.
+    uint256 public constant REVEAL_DELAY = 2;
+    /// @notice The last block, counted from the commit, in which blockhash(B + 1) is still served by the EVM.
+    uint256 public constant REVEAL_WINDOW = 256;
 
     address public renderer;
     bool public rendererLocked;
@@ -60,6 +71,7 @@ contract OneNFT is ERC721, Ownable {
     uint8[] public pool;
 
     event Committed(address indexed wallet, uint128 pins, uint256 blockNumber, uint256 paid);
+    event Renewed(address indexed wallet, uint256 blockNumber);
     event Rolled(uint256 indexed tokenId, address indexed to, uint64 seed, uint128 pins, uint8 one, uint256 paid);
     event RendererSet(address indexed renderer);
     event RendererLocked();
@@ -71,6 +83,9 @@ contract OneNFT is ERC721, Ownable {
     error PayoutFailed();
     error NothingToReveal(address wallet);
     error TooEarly(address wallet, uint256 revealBlock);
+    error Expired(address wallet, uint256 lastBlock);
+    error NotExpired(address wallet, uint256 lastBlock);
+    error NoHash(address wallet, uint256 blockNumber);
     error RendererIsLocked();
     error BadRenderer(address renderer);
     error OwnershipIsPermanent();
@@ -163,16 +178,20 @@ contract OneNFT is ERC721, Ownable {
         emit Committed(wallet, pins, block.number, price);
     }
 
-    /// @notice Mint the committed face for `wallet`. Anyone may call, from the block after the commit on.
-    /// The seed mixes the hash of that block; past 256 blocks the hash reads as zero, still one seed, still one face.
+    /// @notice Mint the committed face for `wallet`. Anyone may call, from two blocks after the commit
+    /// to 256 blocks after it: the seed mixes the hash of the block after the commit, and that hash
+    /// exists only in that window. Past the window, `renew` first.
     function reveal(address wallet) external returns (uint256 tokenId) {
         Commit memory c = commits[wallet];
         if (c.blockNumber == 0) revert NothingToReveal(wallet);
-        if (block.number <= c.blockNumber) revert TooEarly(wallet, c.blockNumber + 1);
+        if (block.number < c.blockNumber + REVEAL_DELAY) revert TooEarly(wallet, c.blockNumber + REVEAL_DELAY);
+        if (block.number > c.blockNumber + REVEAL_WINDOW) revert Expired(wallet, c.blockNumber + REVEAL_WINDOW);
+        bytes32 hash = blockhash(c.blockNumber + 1);
+        if (hash == bytes32(0)) revert NoHash(wallet, c.blockNumber + 1);
         delete commits[wallet];
         pending--;
         tokenId = ++totalSupply;
-        uint64 seed = uint64(uint256(keccak256(abi.encodePacked(blockhash(c.blockNumber + 1), wallet, c.pins, c.blockNumber, tokenId))));
+        uint64 seed = uint64(uint256(keccak256(abi.encodePacked(hash, wallet, c.pins, c.blockNumber))));
         uint8 one = NO_ONE;
         if (pool.length > 0) {
             uint256 lucky = IFaceRenderer(renderer).luckyFor(seed, pool.length, MAX_SUPPLY - tokenId + 1);
@@ -189,10 +208,26 @@ contract OneNFT is ERC721, Ownable {
         emit Rolled(tokenId, wallet, seed, c.pins, one, c.paid);
     }
 
+    /// @notice Move an unrevealed commit past its window to the current block, so it can be revealed
+    /// again two blocks from now with a hash nobody has seen. Anyone may call. The pins and the fee stay.
+    function renew(address wallet) external {
+        Commit memory c = commits[wallet];
+        if (c.blockNumber == 0) revert NothingToReveal(wallet);
+        if (block.number <= c.blockNumber + REVEAL_WINDOW) revert NotExpired(wallet, c.blockNumber + REVEAL_WINDOW);
+        commits[wallet].blockNumber = uint64(block.number);
+        emit Renewed(wallet, block.number);
+    }
+
     /// @return revealBlock the first block a wallet's commit can be revealed in, 0 when there is none
     function revealBlockOf(address wallet) external view returns (uint256 revealBlock) {
         Commit memory c = commits[wallet];
-        return c.blockNumber == 0 ? 0 : c.blockNumber + 1;
+        return c.blockNumber == 0 ? 0 : c.blockNumber + REVEAL_DELAY;
+    }
+
+    /// @return lastBlock the last block a wallet's commit can be revealed in before it needs `renew`, 0 when there is none
+    function lastRevealBlockOf(address wallet) external view returns (uint256 lastBlock) {
+        Commit memory c = commits[wallet];
+        return c.blockNumber == 0 ? 0 : c.blockNumber + REVEAL_WINDOW;
     }
 
     // ---- renderer ----
