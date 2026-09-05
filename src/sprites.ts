@@ -9,16 +9,16 @@ import { Canvas, ROLE } from "./pixels.ts";
 const { K, A, a, L, B, b, W } = ROLE;
 
 export type Tier = "common" | "uncommon" | "rare" | "legendary";
-export type Item = { name: string; tier: Tier; rows: string[] };
+export type Item = { name: string; tier: Tier; rows: string[]; /** An accessory that covers the mouth: the mouth layer is not drawn under it. */ hidesMouth?: boolean };
 export type Slot = { slot: string; trait: string; pinnable: boolean; group: "bg" | "top" | "skin" | "eyes" | "mouth" | "hair" | "acc"; items: Item[] };
 
 type Draw = (c: Canvas) => void;
-function item(name: string, tier: Tier, draw: Draw, opts: { outline?: boolean; shade?: boolean } = {}): Item {
+function item(name: string, tier: Tier, draw: Draw, opts: { outline?: boolean; shade?: boolean; hidesMouth?: boolean } = {}): Item {
   const c = new Canvas();
   draw(c);
   if (opts.outline) c.outline();
   if (opts.shade) c.shadeRight();
-  return { name, tier, rows: c.toRows() };
+  return { name, tier, rows: c.toRows(), ...(opts.hidesMouth ? { hidesMouth: true } : {}) };
 }
 const body = (draw: Draw) => (c: Canvas) => { draw(c); };
 
@@ -181,7 +181,7 @@ export const ACCESSORIES: Item[] = [
   item("Blush", "common", (c) => { c.rect(9, 14, 2, 1, B); c.rect(21, 14, 2, 1, B); }),
   item("Mole", "common", (c) => c.px(20, 15, K)),
   item("Scar", "uncommon", (c) => c.rows(19, 7, ["K", ".K", "..K", ".K.K".slice(0, 3)])),
-  item("Mask", "rare", (c) => { c.rect(10, 15, 12, 5, B); c.rect(10, 15, 12, 1, b); c.rect(8, 16, 2, 1, B); c.rect(22, 16, 2, 1, B); }),
+  item("Mask", "rare", (c) => { c.rect(10, 15, 12, 5, B); c.rect(10, 15, 12, 1, b); c.rect(8, 16, 2, 1, B); c.rect(22, 16, 2, 1, B); }, { hidesMouth: true }),
   item("Monocle", "rare", (c) => { c.rows(17, 9, ["BBBB", "B..B", "B..B", "BBBB", "...B", "...B"]); }),
   item("Bandaid", "uncommon", (c) => { c.rect(9, 14, 3, 1, W); c.rect(10, 14, 1, 1, B); }),
   item("Tear", "uncommon", (c) => { c.rows(12, 13, ["B", "B", "B"]); }),

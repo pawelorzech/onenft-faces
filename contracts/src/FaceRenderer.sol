@@ -122,9 +122,15 @@ contract FaceRenderer is IFaceRenderer {
         for (uint256 k = 0; k < slot; k++) p += 3 * itemCount(m, k);
     }
 
+    /// @dev Low nibble of the item's byte is the tier; bit 4 marks an accessory that hides the mouth.
     function tierOf(bytes memory m, Layout memory L, uint256 slot, uint256 item) internal pure returns (uint256) {
         uint256 b = slotBlock(m, L, slot);
-        return u8(m, b + 2 * itemCount(m, slot) + item);
+        return u8(m, b + 2 * itemCount(m, slot) + item) & 0x0f;
+    }
+
+    function hidesMouth(bytes memory m, Layout memory L, uint256 slot, uint256 item) internal pure returns (bool) {
+        uint256 b = slotBlock(m, L, slot);
+        return (u8(m, b + 2 * itemCount(m, slot) + item) & 0x10) != 0;
     }
 
     /// @dev Walks the length-prefixed names to the n-th one.
@@ -322,7 +328,11 @@ contract FaceRenderer is IFaceRenderer {
             }
             return px;
         }
+        // An accessory that hides the mouth (group 6 with bit 4 set) leaves the mouth layer (group 4) undrawn.
+        bool mouthHidden = false;
+        for (uint256 slot = 0; slot < L.slots; slot++) if (groupOf(m, slot) == 6 && hidesMouth(m, L, slot, t.items[slot])) mouthHidden = true;
         for (uint256 slot = 0; slot < L.slots; slot++) {
+            if (mouthHidden && groupOf(m, slot) == 4) continue;
             paint(px, spriteData(spriteOf(m, slot, t.items[slot])), roleMap(groupOf(m, slot)));
         }
         for (uint256 y = 0; y < 32; y++) for (uint256 x = 1; x < 32; x++) {

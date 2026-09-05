@@ -197,7 +197,10 @@ export function composite(t: Traits): Uint8Array {
     for (let y = 0; y < N; y++) for (let x = 1; x < N; x++) { const v = out[y * N + x]; if ((v === 19 || v === 22) && out[y * N + x - 1] === 1) out[y * N + x] = v + 2; }
     return out;
   }
+  const accK = SLOTS.findIndex((s) => s.slot === "accessory"), mouthK = SLOTS.findIndex((s) => s.slot === "mouth");
+  const mouthHidden = Boolean(SLOTS[accK].items[t.items[accK]].hidesMouth);
   SLOTS.forEach((s, k) => {
+    if (k === mouthK && mouthHidden) return;
     const c = Canvas.fromRows(s.items[t.items[k]].rows);
     const m = ROLE_MAPS[k];
     for (let i = 0; i < N * N; i++) if (c.g[i]) out[i] = m[c.g[i]];

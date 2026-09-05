@@ -88,3 +88,11 @@ test("skin tiers: human tones common or uncommon and pinnable, fantasy rarer", (
   expect(SKINS.filter((s) => s.tier === "rare").length).toBeGreaterThan(5);
   expect(SKIN_WEIGHTS[SKINS.findIndex((s) => s.name === "Gold")]).toBeLessThan(40);
 });
+
+test("a mask hides the mouth layer", () => {
+  const acc = SLOTS.findIndex((s) => s.slot === "accessory"), mouth = SLOTS.findIndex((s) => s.slot === "mouth");
+  const mask = SLOTS[acc].items.findIndex((i) => i.name === "Mask");
+  let seed = 1n; while (traitsOf(seed).items[acc] !== mask) seed++;
+  expect(svgOf(traitsOf(seed, { mouth: 3 }))).toBe(svgOf(traitsOf(seed, { mouth: 5 })));
+  expect(svgOf(traitsOf(1n, { mouth: 3 }))).not.toBe(svgOf(traitsOf(1n, { mouth: 5 })));
+});
