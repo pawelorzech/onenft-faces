@@ -1,6 +1,6 @@
 /** JSON for other people's code and the spec. Everything here is derived; nothing is stored. */
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
-import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, attributesOf, rarityOf, unpackPins, PIN_PRICES_WEI, PINNABLE, ONE_OF_ONE_CHANCE, TIER_WEIGHT } from "./faces.ts";
+import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, attributesOf, rarityOf, unpackPins, PIN_PRICES_WEI, PINNABLE, TIER_WEIGHT } from "./faces.ts";
 import { SITE, traitsOfRecord, isAuthor, opensea, explorer, MAX_SUPPLY, type Names, NO_NAMES } from "./site.ts";
 import type { ChainState, FaceRecord } from "./contract.ts";
 import type { Address } from "viem";
@@ -59,7 +59,7 @@ export function specJson() {
     skins: SKINS.map((s, i) => ({ ...s, weight: SKIN_WEIGHTS[i] })),
     hairColours: HAIRS, topColours: TOPCOLORS, grounds: GROUNDS, accents: ACCENTS,
     oneOfOnes: ONE_OF_ONES.map((o) => ({ name: o.name, main: o.main, second: o.second })),
-    oneOfOneChancePer10000: ONE_OF_ONE_CHANCE,
+    oneOfOneOdds: "poolLeft / tokensLeft per roll without pins",
     maxSupply: MAX_SUPPLY,
     rule: "one roll per wallet per UTC day; up to three pins on pinnable slots, common or uncommon items only; a pinned roll never takes a one of one",
   };

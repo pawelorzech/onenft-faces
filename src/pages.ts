@@ -18,7 +18,7 @@ export function rarityPage(chain: ChainState | null, epoch: number): string {
   const body = `<main class="wide">
 ${topBar()}
 <h2 class="syne">Every item and its odds</h2>
-<p style="max-width:640px">Tiers set the weights: a common item weighs 100, an uncommon 35, a rare 8, a legendary 1, scaled so every slot sums to 10,000. A face's rarity is its rarest part. ${num(combinations())} combinations, plus ${ONE_OF_ONES.length} one of ones at 1 in 10,000 per unpinned roll.</p>
+<p style="max-width:640px">Tiers set the weights: a common item weighs 100, an uncommon 35, a rare 8, a legendary 1, scaled so every slot sums to 10,000. A face's rarity is its rarest part. ${num(combinations())} combinations, plus ${ONE_OF_ONES.length} one of ones, odds of pool left over tokens left per unpinned roll.</p>
 ${tables.join("")}
 ${skins}
 ${colours}
@@ -42,7 +42,7 @@ export function onesPage(chain: ChainState | null, epoch: number, names: Names =
   const body = `<main class="wide">
 ${topBar()}
 <h2 class="syne">One of ones</h2>
-<p style="max-width:640px">${ONE_OF_ONES.length} drawings, each once. A roll without pins has a 1 in 10,000 chance to take one from the pool; the contract then removes it. ${chain ? `${chain.poolLeft} still in the pool.` : ""} The ground behind a one of one is the token's own.</p>
+<p style="max-width:640px">${ONE_OF_ONES.length} drawings, each once. A roll without pins takes one with odds of pool left over tokens left; the contract then removes it from the pool. ${chain ? `${chain.poolLeft} still in the pool.` : ""} The ground behind a one of one is the token's own.</p>
 <div class="strip">${tiles.join("")}</div>
 <p class="small"><a href="/">Back to the roll</a></p>
 </main>`;

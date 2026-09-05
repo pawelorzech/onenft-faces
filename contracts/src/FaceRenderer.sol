@@ -21,7 +21,6 @@ contract FaceRenderer is IFaceRenderer {
 
     uint256 public constant RECORD = 384;
     uint256 public constant PER_STORE = 63;
-    uint256 public constant ONE_OF_ONE_CHANCE = 1;
     uint8 public constant NO_PIN = 255;
 
     address public immutable meta;
@@ -163,15 +162,17 @@ contract FaceRenderer is IFaceRenderer {
         return n - 1;
     }
 
-    /// @notice The 1/1 index a seed would take from a pool of `poolLength`, or 255.
-    function luckyOf(uint64 seed, uint256 slots, uint256 poolLength) public pure returns (uint8) {
-        if (poolLength == 0 || draw(seed, slots + 5) >= ONE_OF_ONE_CHANCE) return NO_PIN;
+    /// @notice The 1/1 index a seed takes from a pool of `poolLength` with `tokensLeft` still to roll, or 255.
+    /// Odds are poolLength / tokensLeft, so on average the pool empties with the supply.
+    function luckyOf(uint64 seed, uint256 slots, uint256 poolLength, uint256 tokensLeft) public pure returns (uint8) {
+        if (poolLength == 0 || tokensLeft == 0) return NO_PIN;
+        if (draw(seed, slots + 5) >= (poolLength * 10000) / tokensLeft) return NO_PIN;
         return uint8(draw(seed, slots + 6) % poolLength);
     }
 
     /// @notice `luckyOf` with the slot count read from meta, for the token contract.
-    function luckyFor(uint64 seed, uint256 poolLength) external view returns (uint256) {
-        return luckyOf(seed, u8(DataStore.read(meta), 0), poolLength);
+    function luckyFor(uint64 seed, uint256 poolLength, uint256 tokensLeft) external view returns (uint256) {
+        return luckyOf(seed, u8(DataStore.read(meta), 0), poolLength, tokensLeft);
     }
 
     function pinCount(uint32 pins) public pure returns (uint256 n) {

@@ -9,7 +9,8 @@ import {IFaceRenderer} from "./IFaceRenderer.sol";
 /// @notice Every wallet may roll one face per UTC day, free. A roll may pin up to
 /// three of the pinnable layers (background, top, eyes, hair) to a common or
 /// uncommon item for a fee that rises with the number of pins; the rest is luck.
-/// A roll with no pins may land on a 1/1, once each, until the pool is empty.
+/// A roll with no pins may land on a 1/1, once each, with odds of pool left over
+/// tokens left, so the pool empties with the supply.
 /// The author's wallet gets one free roll a day too, which anyone may trigger.
 /// Supply stops at MAX_SUPPLY.
 ///
@@ -127,7 +128,7 @@ contract OneNFT is ERC721, Ownable {
         uint64 seed = uint64(uint256(keccak256(abi.encodePacked(block.prevrandao, to, tokenId, block.number))));
         uint8 one = NO_ONE;
         if (pins == NO_PINS && pool.length > 0) {
-            uint8 lucky = uint8(IFaceRenderer(renderer).luckyFor(seed, pool.length));
+            uint8 lucky = uint8(IFaceRenderer(renderer).luckyFor(seed, pool.length, MAX_SUPPLY - tokenId + 1));
             if (lucky != NO_ONE) {
                 one = pool[lucky];
                 pool[lucky] = pool[pool.length - 1];

@@ -10,6 +10,6 @@ interface IFaceRenderer {
     function pinsOk(uint32 pins) external view returns (bool);
     function pinCount(uint32 pins) external pure returns (uint256);
     function oneOfOneCount() external view returns (uint256);
-    /// @return the 1/1 pool index a seed takes, or 255
-    function luckyFor(uint64 seed, uint256 poolLength) external view returns (uint256);
+    /// @return the 1/1 pool index a seed takes with odds poolLength / tokensLeft, or 255
+    function luckyFor(uint64 seed, uint256 poolLength, uint256 tokensLeft) external view returns (uint256);
 }

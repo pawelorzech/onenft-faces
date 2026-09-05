@@ -98,7 +98,7 @@ contract OneNFTTest is Test {
         assertEq(nft.poolLeft(), renderer.oneOfOneCount());
         // Force luck: keep rolling fresh wallets until a 1/1 lands or we give up.
         uint256 hits = 0;
-        for (uint256 i = 1; i < 4000 && hits == 0; i++) {
+        for (uint256 i = 1; i < 2000 && hits == 0; i++) {
             address w = address(uint160(0x1000 + i));
             vm.prevrandao(bytes32(uint256(i * 7919)));
             vm.prank(w);

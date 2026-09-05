@@ -7,7 +7,7 @@
  * reader could misunderstand. Facts (numbers, addresses, paths) stay exact.
  */
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
-import { traitsOf, svgOf, attributesOf, rarityOf, groundOf, faceOfDay, packPins, unpackPins, pinOk, PINNABLE, PIN_PRICES_WEI, ONE_OF_ONE_CHANCE, combinations, type Traits, type Pins } from "./faces.ts";
+import { traitsOf, svgOf, attributesOf, rarityOf, groundOf, faceOfDay, packPins, unpackPins, pinOk, PINNABLE, PIN_PRICES_WEI, combinations, type Traits, type Pins } from "./faces.ts";
 import { ROLL_SELECTOR, type ChainState, type FaceRecord } from "./contract.ts";
 
 export type Names = Map<string, string>;
@@ -330,7 +330,7 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
 <aside><div class="stick">
 <a class="mark syne" href="/">${SITE}</a>
 <h1 class="syne">One face<br>a day,<br>yours to pin</h1>
-<p class="lead">Every wallet rolls one face a day, free. Pin a background, a top, eyes or hair and pay a little; the rest is luck. Rare things cannot be bought. One roll in ten thousand is a one of one.</p>
+<p class="lead">Every wallet rolls one face a day, free. Pin a background, a top, eyes or hair and pay a little; the rest is luck. Rare things cannot be bought. A roll without pins can land on a one of one.</p>
 <hr>
 <div style="display:flex;gap:34px"><div><div class="big syne">${num(total)}</div><div class="small">of ${num(MAX_SUPPLY)} rolled</div></div>${chain ? `<div><div class="syne" style="font-weight:700;font-size:26px;line-height:1">${chain.poolLeft}</div><div class="small">1/1 left</div></div><div id="yours" hidden><div class="syne" style="font-weight:700;font-size:26px;line-height:1">0</div><div class="small">yours</div></div>` : ""}</div>
 <div style="display:flex;flex-direction:column;gap:12px">${cta}</div>
@@ -384,10 +384,10 @@ export function howPage(chain: ChainState | null, epoch: number): string {
   const body = `<main class="prose">
 ${topBar()}
 <h2 class="syne">One roll a day, and what you may pin</h2>
-<p><strong>The roll.</strong> Every wallet may call <code>roll</code> once per UTC day. The contract mixes the block's randomness, your address and the token number into a 64-bit seed, and the seed decides everything: seven layers, five colours, and whether this is the one roll in ten thousand that takes a one of one. A free roll costs gas and nothing else.</p>
+<p><strong>The roll.</strong> Every wallet may call <code>roll</code> once per UTC day. The contract mixes the block's randomness, your address and the token number into a 64-bit seed, and the seed decides everything: seven layers, five colours, and whether this roll takes a one of one. A free roll costs gas and nothing else.</p>
 <p><strong>The pins.</strong> Four layers can be pinned: background, top, eyes, hair or hat. You may pin up to three of them, to any common or uncommon item. One pin costs 0.0005 ETH, two cost 0.0015, three cost 0.004. The fee goes to the author. Rare and legendary items cannot be pinned; they come from luck or not at all. A roll with pins never lands on a one of one.</p>
 <p><strong>The layers.</strong> ${SLOTS.map((s) => `${s.items.length} ${s.trait.toLowerCase()}`).join(", ")}. Every item has a tier: common, uncommon, rare, legendary. The weight tables live in the contract; <a href="/rarity">the rarity page</a> lists each item's odds per roll. Skin, hair colour, top colour, ground and accent colour are drawn on top of that. ${num(combinations())} combinations before the one of ones.</p>
-<p><strong>The one of ones.</strong> ${ONE_OF_ONES.length} full drawings sit in a pool. A roll without pins has a ${ONE_OF_ONE_CHANCE} in 10,000 chance to take one; the contract removes it from the pool, so each exists once. <a href="/ones">See what is left.</a></p>
+<p><strong>The one of ones.</strong> ${ONE_OF_ONES.length} full drawings sit in a pool. A roll without pins takes one with odds of pool left over tokens left: about 1 in ${Math.round(10000 / ONE_OF_ONES.length)} on the first roll, better as the end nears, so on average the whole pool is rolled by the last token. The contract removes a rolled one from the pool; each exists once. <a href="/ones">See what is left.</a></p>
 <p><strong>The treasury.</strong> The author's wallet gets one free roll a day too, with the same luck as everyone. Anyone may trigger it; the site does, at midnight UTC.</p>
 <p><strong>The image.</strong> A sprite is 32 by 32 pixels of roles, not colours: outline, fill, shade, light, a second fill, white. The token's palette turns roles into colours, so one hair sprite serves every hair colour. Layers composite bottom to top, a rim light lands where a fill sits right of an outline, and the result is one SVG of rects returned as a <code>data:</code> URI by the contract, with no server in between.</p>
 <p><strong>The end.</strong> Supply stops at 10,000. The image rules can change for faces not yet rolled until the author locks them; a rolled face keeps its renderer forever.</p>
@@ -403,7 +403,7 @@ seed = keccak(prevrandao, wallet, tokenId, block) as u64
 draw(i) = mix(seed + i) mod 10000
 for slot in 0..6: item[slot] = walk(WEIGHTS[slot], draw(slot)), or the pin
 skin = walk(SKIN_WEIGHTS, draw(7)); hair, top, ground, accent = draw(8..11) mod count
-lucky = no pins and draw(12) < 1; one = pool[draw(13) mod pool size]</code></pre>
+lucky = no pins and draw(12) < pool size * 10000 / tokens left; one = pool[draw(13) mod pool size]</code></pre>
 <p>Everything here is CC0. If you build on it, write to me.</p>
 <p class="small"><a href="/">Back to the roll</a>. Every collection: <a href="https://${PARENT}">${PARENT}</a>.</p>
 </main>`;

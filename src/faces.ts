@@ -78,8 +78,8 @@ export type Traits = { items: number[]; skin: number; hair: number; top: number;
 export type Pins = Partial<Record<string, number>>;
 export const PINNABLE = SLOTS.map((s, i) => (s.pinnable ? i : -1)).filter((i) => i >= 0);
 export const NO_PIN = 0xff;
-/** One roll in 10,000 lands in the 1/1 pool while it has anything left and no pin is set. */
-export const ONE_OF_ONE_CHANCE = 1;
+/** The 1/1 odds adapt: a roll without pins hits the pool with probability poolLeft / tokensLeft, so on average every 1/1 is rolled by the end. */
+export const MAX_SUPPLY = 10000;
 export const PIN_PRICES_WEI = [0n, 500_000_000_000_000n, 1_500_000_000_000_000n, 4_000_000_000_000_000n];
 
 export function pinOk(slot: number, item: number): boolean {
@@ -106,10 +106,11 @@ export const S = SLOTS.length;
 export function draws(seed: bigint): number[] {
   return Array.from({ length: S + 7 }, (_, i) => Number(mix64((seed + BigInt(i)) & U64) % 10000n));
 }
-/** Draws S+5 and S+6 decide the 1/1: lucky when draw S+5 < ONE_OF_ONE_CHANCE, pool index draw S+6 mod pool length. */
-export function luckyOf(seed: bigint, poolLength: number): number | undefined {
+/** Draws S+5 and S+6 decide the 1/1: lucky when draw S+5 < poolLeft * 10000 / tokensLeft, pool index draw S+6 mod pool length. */
+export function luckyOf(seed: bigint, poolLength: number, tokensLeft = MAX_SUPPLY): number | undefined {
   const d = draws(seed);
-  if (d[S + 5] >= ONE_OF_ONE_CHANCE || poolLength === 0) return undefined;
+  if (poolLength === 0 || tokensLeft === 0) return undefined;
+  if (d[S + 5] >= Math.floor((poolLength * 10000) / tokensLeft)) return undefined;
   return d[S + 6] % poolLength;
 }
 export function traitsOf(seed: bigint, pins: Pins = {}, one?: number): Traits {

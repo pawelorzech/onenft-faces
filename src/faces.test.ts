@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
 import { Canvas } from "./pixels.ts";
-import { WEIGHTS, SKIN_WEIGHTS, SKINS, traitsOf, luckyOf, pinOk, packPins, unpackPins, face, svgOf, metadataOf, rarityOf, PINNABLE, ONE_OF_ONE_CHANCE, mix64 } from "./faces.ts";
+import { WEIGHTS, SKIN_WEIGHTS, SKINS, traitsOf, luckyOf, pinOk, packPins, unpackPins, face, svgOf, metadataOf, rarityOf, PINNABLE, mix64 } from "./faces.ts";
 
 test("every weight table sums to 10,000 and follows the tiers", () => {
   for (const w of [...WEIGHTS, SKIN_WEIGHTS]) expect(w.reduce((a, b) => a + b, 0)).toBe(10000);
@@ -45,13 +45,16 @@ test("pins pack to one byte per pinnable slot", () => {
   expect(packPins({ background: 3 })).toBe(0x03ffffff);
 });
 
-test("the 1/1 pool is hit about once in 10,000 seeds", () => {
+test("the 1/1 odds are pool over tokens left", () => {
   let hits = 0;
-  for (let s = 1n; s <= 200000n; s++) if (luckyOf(s, ONE_OF_ONES.length) !== undefined) hits++;
-  expect(hits).toBeGreaterThan(5);
-  expect(hits).toBeLessThan(60);
-  expect(luckyOf(373n, 0)).toBeUndefined();
-  expect(ONE_OF_ONE_CHANCE).toBe(1);
+  for (let s = 1n; s <= 20000n; s++) if (luckyOf(s, 50, 10000) !== undefined) hits++;
+  expect(hits).toBeGreaterThan(60); // 1 in 200: about 100
+  expect(hits).toBeLessThan(140);
+  let late = 0;
+  for (let s = 1n; s <= 2000n; s++) if (luckyOf(s, 3, 6) !== undefined) late++;
+  expect(late).toBeGreaterThan(800); // 1 in 2
+  expect(luckyOf(373n, 0, 100)).toBeUndefined();
+  expect(luckyOf(373n, 5, 0)).toBeUndefined();
 });
 
 test("a 1/1 renders its own colours over the token's ground and reads legendary", () => {

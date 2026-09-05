@@ -52,9 +52,12 @@ contract FaceRendererTest is Test {
         string memory k = string.concat("$[", (count - 1).toString(), "]");
         uint64 seed = uint64(parseUint(vm.parseJsonString(json, string.concat(k, ".seed"))));
         uint256 one = vm.parseJsonUint(json, string.concat(k, ".one"));
-        assertEq(r.luckyFor(seed, r.oneOfOneCount()), one);
-        assertEq(r.luckyFor(seed, 0), 255);
-        assertEq(r.luckyFor(1, r.oneOfOneCount()), 255);
+        assertEq(r.luckyFor(seed, r.oneOfOneCount(), 10000), one);
+        assertEq(r.luckyFor(seed, 0, 10000), 255);
+        assertEq(r.luckyFor(seed, r.oneOfOneCount(), 0), 255);
+        assertEq(r.luckyFor(1, r.oneOfOneCount(), 10000), 255);
+        // at the end the odds are certain: 3 left in the pool, 3 tokens left
+        assertTrue(r.luckyFor(1, 3, 3) != 255);
     }
 
     function test_PinsAreCheckedAgainstTiersAndCounts() public view {
