@@ -48,14 +48,14 @@ await Bun.write(new URL("./test/fixtures/faces_data.json", import.meta.url).path
 // Fixtures: seeds with no pins, with pins, and forced 1/1s.
 const cases: { seed: bigint; pins: Pins; one?: number }[] = [];
 for (let i = 1; i <= 12; i++) cases.push({ seed: BigInt(i) * 0x9e3779b97f4a7c15n % (1n << 64n), pins: {} });
-cases.push({ seed: 77n, pins: { background: 4 } }, { seed: 78n, pins: { hair: 12, eyes: 8 } }, { seed: 79n, pins: { background: 0, top: 2, eyes: 1, hair: 3 } });
+cases.push({ seed: 77n, pins: { background: 4 } }, { seed: 78n, pins: { hair: 12, eyes: 8 } }, { seed: 79n, pins: { background: 0, top: 2, eyes: 1 } }, { seed: 80n, pins: { skin: 2, hair: 5 } });
 for (let i = 0; i < ONE_OF_ONES.length; i++) cases.push({ seed: 1000n + BigInt(i), pins: {}, one: i });
 // Find a naturally lucky seed so the contract path is covered too.
 let lucky = 0n; for (let s = 1n; s < 200000n; s++) if (luckyOf(s, ONE_OF_ONES.length, 10000) !== undefined) { lucky = s; break; }
 if (lucky) cases.push({ seed: lucky, pins: {}, one: luckyOf(lucky, ONE_OF_ONES.length, 10000) });
 const fixtures = cases.map((c) => {
   const f = face(c.seed, c.pins, c.one);
-  return { seed: c.seed.toString(), pins: packPins(c.pins), one: c.one ?? 255, svg: f.svg, json: metadataOf(1, f.traits), attributes: f.attributes.map((a) => ({ type: a.trait_type, value: a.value, tier: a.tier ?? "" })), items: f.traits.items, colours: [f.traits.skin, f.traits.hair, f.traits.top, f.traits.ground, f.traits.accent] };
+  return { seed: c.seed.toString(), pins: packPins(c.pins).toString(), one: c.one ?? 255, svg: f.svg, json: metadataOf(1, f.traits), attributes: f.attributes.map((a) => ({ type: a.trait_type, value: a.value, tier: a.tier ?? "" })), items: f.traits.items, colours: [f.traits.skin, f.traits.hair, f.traits.top, f.traits.ground, f.traits.accent] };
 });
 await Bun.write(new URL("./test/fixtures/faces_cases.json", import.meta.url).pathname, JSON.stringify(fixtures, null, 1));
 console.log(`${sprites.length} sprites in ${stores.length} stores, meta ${meta.length} bytes, ${fixtures.length} cases, lucky seed ${lucky}`);

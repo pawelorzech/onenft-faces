@@ -2,13 +2,13 @@
 pragma solidity ^0.8.28;
 
 /// @notice Draws a face from its seed, its pins and its 1/1 index (255 for none).
-/// `pins` is one byte per pinnable slot, high byte first, 255 for no pin.
+/// `pins` is one byte per pin key, high byte first: the pinnable slots, then the skin, then spare bytes; 255 for no pin.
 interface IFaceRenderer {
-    function tokenURI(uint256 tokenId, uint64 seed, uint32 pins, uint8 one) external view returns (string memory);
-    function svg(uint64 seed, uint32 pins, uint8 one) external view returns (string memory);
+    function tokenURI(uint256 tokenId, uint64 seed, uint64 pins, uint8 one) external view returns (string memory);
+    function svg(uint64 seed, uint64 pins, uint8 one) external view returns (string memory);
     /// @return true when every set pin names a common or uncommon item of a pinnable slot
-    function pinsOk(uint32 pins) external view returns (bool);
-    function pinCount(uint32 pins) external pure returns (uint256);
+    function pinsOk(uint64 pins) external view returns (bool);
+    function pinCount(uint64 pins) external pure returns (uint256);
     function oneOfOneCount() external view returns (uint256);
     /// @return the 1/1 pool index a seed takes with odds poolLength / tokensLeft, or 255
     function luckyFor(uint64 seed, uint256 poolLength, uint256 tokensLeft) external view returns (uint256);

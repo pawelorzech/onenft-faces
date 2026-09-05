@@ -175,24 +175,33 @@ contract FaceRenderer is IFaceRenderer {
         return luckyOf(seed, u8(DataStore.read(meta), 0), poolLength, tokensLeft);
     }
 
-    function pinCount(uint32 pins) public pure returns (uint256 n) {
-        for (uint256 k = 0; k < 4; k++) if (uint8(pins >> (8 * (3 - k))) != NO_PIN) n++;
+    /// @dev Byte k of the pins, high byte first: the pinnable slots in order, then the skin, then spare bytes.
+    function pinByte(uint64 pins, uint256 k) internal pure returns (uint8) {
+        return uint8(pins >> (8 * (7 - k)));
     }
 
-    function pinsOk(uint32 pins) public view returns (bool) {
+    function pinCount(uint64 pins) public pure returns (uint256 n) {
+        for (uint256 k = 0; k < 8; k++) if (pinByte(pins, k) != NO_PIN) n++;
+    }
+
+    /// @notice Every set pin names a common or uncommon item of a pinnable slot, or a common or uncommon skin; spare bytes are empty.
+    function pinsOk(uint64 pins) public view returns (bool) {
         bytes memory m = DataStore.read(meta);
         Layout memory L = layout(m);
         uint256 k = 0;
         for (uint256 slot = 0; slot < L.slots; slot++) {
             if (!pinnable(m, slot)) continue;
-            uint8 p = uint8(pins >> (8 * (3 - k)));
-            k++;
+            uint8 p = pinByte(pins, k++);
             if (p == NO_PIN) continue;
             if (p >= itemCount(m, slot)) return false;
             if (tierOf(m, L, slot, p) > 1) return false;
         }
-        // pinnable slots beyond the four bytes do not exist; extra bytes must be empty
-        for (; k < 4; k++) if (uint8(pins >> (8 * (3 - k))) != NO_PIN) return false;
+        uint8 sk = pinByte(pins, k++);
+        if (sk != NO_PIN) {
+            if (sk >= u8(m, L.skins)) return false;
+            if (u8(m, L.skins + 1 + 12 * sk + 2) > 1) return false;
+        }
+        for (; k < 8; k++) if (pinByte(pins, k) != NO_PIN) return false;
         return true;
     }
 
@@ -206,19 +215,19 @@ contract FaceRenderer is IFaceRenderer {
         uint8 one;
     }
 
-    function traitsOf(bytes memory m, Layout memory L, uint64 seed, uint32 pins, uint8 one) public pure returns (Traits memory t) {
+    function traitsOf(bytes memory m, Layout memory L, uint64 seed, uint64 pins, uint8 one) public pure returns (Traits memory t) {
         t.items = new uint256[](L.slots);
         uint256 k = 0;
         for (uint256 slot = 0; slot < L.slots; slot++) {
             uint256 n = itemCount(m, slot);
             uint256 rolled = pickWeighted(m, slotBlock(m, L, slot), n, draw(seed, slot));
             if (pinnable(m, slot)) {
-                uint8 p = uint8(pins >> (8 * (3 - k)));
-                k++;
+                uint8 p = pinByte(pins, k++);
                 if (p != NO_PIN) rolled = p;
             }
             t.items[slot] = rolled;
         }
+        uint8 skinPin = pinByte(pins, k);
         uint256 S = L.slots;
         uint256 skinCount = u8(m, L.skins);
         // skin weights sit at 12-byte stride: u16 weight, u8 tier, 9 bytes rgb
@@ -229,6 +238,7 @@ contract FaceRenderer is IFaceRenderer {
             acc += u16(m, L.skins + 1 + 12 * i);
             if (roll < acc) { t.skin = i; break; }
         }
+        if (skinPin != NO_PIN) t.skin = skinPin;
         t.hair = draw(seed, S + 1) % u8(m, L.hairs);
         t.top = draw(seed, S + 2) % u8(m, L.tops);
         t.ground = draw(seed, S + 3) % u8(m, L.grounds);
@@ -375,7 +385,7 @@ contract FaceRenderer is IFaceRenderer {
         return layout(DataStore.read(meta)).ones;
     }
 
-    function svg(uint64 seed, uint32 pins, uint8 one) public view returns (string memory) {
+    function svg(uint64 seed, uint64 pins, uint8 one) public view returns (string memory) {
         bytes memory m = DataStore.read(meta);
         Layout memory L = layout(m);
         Traits memory t = traitsOf(m, L, seed, pins, one);
@@ -424,7 +434,7 @@ contract FaceRenderer is IFaceRenderer {
         out = string.concat(out, ",", attr("Rarity", rarityOf(m, L, t)));
     }
 
-    function json(uint256 tokenId, uint64 seed, uint32 pins, uint8 one) public view returns (string memory) {
+    function json(uint256 tokenId, uint64 seed, uint64 pins, uint8 one) public view returns (string memory) {
         bytes memory m = DataStore.read(meta);
         Layout memory L = layout(m);
         Traits memory t = traitsOf(m, L, seed, pins, one);
@@ -436,7 +446,7 @@ contract FaceRenderer is IFaceRenderer {
         );
     }
 
-    function tokenURI(uint256 tokenId, uint64 seed, uint32 pins, uint8 one) external view returns (string memory) {
+    function tokenURI(uint256 tokenId, uint64 seed, uint64 pins, uint8 one) external view returns (string memory) {
         return string.concat("data:application/json;base64,", Base64.encode(bytes(json(tokenId, seed, pins, one))));
     }
 }

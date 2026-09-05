@@ -1,5 +1,5 @@
 import { SLOTS } from "./sprites.ts";
-import { svgOf, itemSvg, previewSvg, unpackPins, faceOfDay, pinOk } from "./faces.ts";
+import { svgOf, itemSvg, skinSvg, previewSvg, unpackPins, faceOfDay, pinKeyOk, SKINS } from "./faces.ts";
 import { chainState, contractEnabled, startRollScan, canRoll, CONTRACT, CHAIN_ID, EPOCH_SECONDS } from "./contract.ts";
 import { homePage, facePage, howPage, notFound, traitsOfRecord } from "./site.ts";
 import { rarityPage, onesPage, holderPage, assetsPage } from "./pages.ts";
@@ -48,11 +48,17 @@ Bun.serve({
     if (path === "/today.svg") return svg(svgOf(faceOfDay(epoch)), false);
     if (path === "/today.png") return png(cardPng(`day${epoch}`, "faces", "roll yours", faceOfDay(epoch), true), false);
     if (path === "/preview.svg") {
-      const p = (url.searchParams.get("p") ?? "ffffffff").toLowerCase();
-      if (!/^[0-9a-f]{8}$/.test(p)) return new Response("bad pins", { status: 400 });
-      const pins = unpackPins(parseInt(p, 16));
-      for (const [slot, item] of Object.entries(pins)) if (!pinOk(SLOTS.findIndex((s) => s.slot === slot), item!)) return new Response("bad pin", { status: 400 });
+      const p = (url.searchParams.get("p") ?? "ffffffffffffffff").toLowerCase();
+      if (!/^[0-9a-f]{16}$/.test(p)) return new Response("bad pins", { status: 400 });
+      const pins = unpackPins(BigInt("0x" + p));
+      for (const [key, item] of Object.entries(pins)) if (!pinKeyOk(key, item!)) return new Response("bad pin", { status: 400 });
       return svg(previewSvg(pins), true);
+    }
+    const skin = path.match(/^\/skin\/(\d{1,2})\.svg$/);
+    if (skin) {
+      const i = Number(skin[1]);
+      if (!SKINS[i]) return new Response("no such skin", { status: 404 });
+      return svg(skinSvg(i, 96), true);
     }
     const item = path.match(/^\/item\/([a-z]+)\/(\d{1,3})\.svg$/);
     if (item) {

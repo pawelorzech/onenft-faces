@@ -1,6 +1,6 @@
 /** Inner pages: rarity, the 1/1 gallery, holders, assets. */
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
-import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, svgOf, groundOf, pinOk, combinations, rarityOf, BASE_TRAITS, type Traits } from "./faces.ts";
+import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, svgOf, groundOf, pinOk, skinPinOk, combinations, rarityOf, BASE_TRAITS, type Traits } from "./faces.ts";
 import { SITE, REPO, PARENT, layout, topBar, esc, num, label, isAuthor, tierTag, pageTraits, traitsOfRecord, stripSize, explorer, chainName, openseaCollection, opensea, shortAddr, MAX_SUPPLY, type Names, NO_NAMES } from "./site.ts";
 import type { ChainState } from "./contract.ts";
 import type { Address } from "viem";
@@ -13,7 +13,7 @@ export function rarityPage(chain: ChainState | null, epoch: number): string {
     const rows = s.items.map((it, i) => `<tr><td><img class="px" src="/item/${s.slot}/${i}.svg" alt="" width="40" height="40" loading="lazy">${esc(it.name)}${tierTag(it.tier)}</td><td>${s.pinnable ? (pinOk(k, i) ? "pin" : "luck only") : "luck"}</td><td class="n">${pct(WEIGHTS[k][i])}</td></tr>`).join("");
     return `<div id="s${k}"><h3 class="syne">${esc(s.trait)}, ${s.items.length} items${s.pinnable ? ", pinnable" : ", never pinnable"}</h3><table class="tr"><thead><tr><th>item</th><th>how you get it</th><th style="text-align:right">odds per roll</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   });
-  const skins = `<div><h3 class="syne">Skin, ${SKINS.length} tones, never pinnable</h3><table class="tr"><tbody>${SKINS.map((s, i) => `<tr><td><i style="display:inline-block;width:40px;height:40px;background:${s.main};vertical-align:middle;margin-right:8px;box-shadow:0 0 0 1px var(--line)"></i>${esc(s.name)}${tierTag(s.tier)}</td><td>luck</td><td class="n">${pct(SKIN_WEIGHTS[i])}</td></tr>`).join("")}</tbody></table></div>`;
+  const skins = `<div><h3 class="syne">Skin, ${SKINS.length} tones, pinnable</h3><table class="tr"><tbody>${SKINS.map((s, i) => `<tr><td><i style="display:inline-block;width:40px;height:40px;background:${s.main};vertical-align:middle;margin-right:8px;box-shadow:0 0 0 1px var(--line)"></i>${esc(s.name)}${tierTag(s.tier)}</td><td>${skinPinOk(i) ? "pin" : "luck only"}</td><td class="n">${pct(SKIN_WEIGHTS[i])}</td></tr>`).join("")}</tbody></table></div>`;
   const colours = [["Hair colour", HAIRS], ["Top colour", TOPCOLORS], ["Ground", GROUNDS], ["Accent", ACCENTS]].map(([name, list]) => `<div><h3 class="syne">${name}, ${(list as any[]).length}, even odds</h3><p class="small">${(list as { name: string; main: string }[]).map((c) => `<i style="display:inline-block;width:18px;height:18px;background:${c.main};vertical-align:middle;margin-right:4px;box-shadow:0 0 0 1px var(--line)"></i>${esc(c.name)}`).join(" &nbsp; ")}</p></div>`).join("");
   const body = `<main class="wide">
 ${topBar()}

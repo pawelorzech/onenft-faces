@@ -132,6 +132,11 @@ export const MOUTHS: Item[] = [
   item("Mustache", "uncommon", (c) => c.rows(11, 15, ["KK......KK", "KKKK..KKKK", "..KKKKKK..", "....KK...."])),
   item("Beard", "rare", (c) => c.rows(9, 15, ["K............K", "KK..........KK", "KKK........KKK", "KKKKKKKKKKKKKK", ".KKKKKKKKKKKK.", "..KKKKKKKKKK..", "...KKKKKKKK..."])),
   item("Whistle", "uncommon", (c) => { c.rows(15, 16, [".K.", "K.K", ".K."]); c.rows(19, 14, ["W", ".W"]); c.rows(19, 18, [".W", "W"]); }),
+  item("Joint", "uncommon", (c) => { c.rect(14, 17, 4, 1, K); c.rows(18, 16, ["....W", "..WWW", "WWWB."]); c.rows(21, 13, ["W", ".W", "W"]); }),
+  item("Pipe", "rare", (c) => { c.rect(14, 17, 4, 1, K); c.rows(18, 17, ["KKKK", "...KK", "..KKK"]); c.rows(22, 14, ["W", ".W"]); }),
+  item("Lollipop", "uncommon", (c) => { c.rect(14, 17, 4, 1, K); c.rows(18, 15, [".BB", "BBB", ".BB", ".W", ".W"]); }),
+  item("Gum", "uncommon", (c) => { c.rect(14, 17, 4, 1, K); c.rows(16, 18, [".BB.", "BBBB", "BBBB", ".BB."]); }),
+  item("Gold tooth", "rare", (c) => c.rows(12, 16, ["KKKKKKKK", "KWKWKBKW", "KKKKKKKK"])),
 ];
 
 // ---------------------------------------------------------------- hair or hat: A hair, B hat accent. The head box is x 9..22, top y 4.
@@ -180,6 +185,18 @@ export const ACCESSORIES: Item[] = [
   item("Monocle", "rare", (c) => { c.rows(17, 9, ["BBBB", "B..B", "B..B", "BBBB", "...B", "...B"]); }),
   item("Bandaid", "uncommon", (c) => { c.rect(9, 14, 3, 1, W); c.rect(10, 14, 1, 1, B); }),
   item("Tear", "uncommon", (c) => { c.rows(12, 13, ["B", "B", "B"]); }),
+  item("Freckles", "common", (c) => { for (const [x, y] of [[10, 14], [12, 15], [11, 16], [20, 14], [19, 15], [21, 16]]) c.px(x, y, ROLE.a); }),
+  item("Nose ring", "uncommon", (c) => { c.rows(16, 15, ["B", "B"]); c.px(17, 16, B); }),
+  item("Headphones", "uncommon", (c) => { c.rect(6, 12, 3, 4, K); c.rect(23, 12, 3, 4, K); c.rect(7, 13, 1, 2, B); c.rect(24, 13, 1, 2, B); c.rows(8, 4, ["...KKKKKKKKKK...", "..K..........K..", ".K............K.", "K..............K"]); }),
+  item("Pearls", "uncommon", (c) => { c.rows(11, 25, ["W........W", ".W......W.", "..WWWWWW.."]); }),
+  item("Choker", "uncommon", (c) => { c.rect(13, 21, 6, 1, K); c.px(16, 22, B); }),
+  item("Bindi", "uncommon", (c) => c.px(16, 9, B)),
+  item("Piercing", "uncommon", (c) => { c.px(21, 8, B); c.px(22, 9, B); }),
+  item("Bow tie", "uncommon", (c) => { c.rows(12, 24, ["BB....BB", "BBBKKBBB", "BB....BB"]); }),
+  item("Sticker", "rare", (c) => { c.rect(20, 14, 3, 3, W); c.px(21, 15, B); }),
+  item("Face paint", "rare", (c) => { c.rect(9, 8, 14, 1, B); c.rect(9, 9, 14, 1, B); c.rows(9, 10, ["B.B.B.B.B.B.B."]); }),
+  item("Third eye", "legendary", (c) => { c.rows(15, 6, ["WW", "WK"]); }),
+  item("Halo dot", "rare", (c) => { c.px(24, 17, B); c.px(24, 18, B); c.px(25, 17, B); }),
 ];
 
 // ---------------------------------------------------------------- 1/1s: a full figure on one layer, its own two swatches. Background comes from the token.

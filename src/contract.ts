@@ -20,16 +20,16 @@ export const ABI = parseAbi([
   "function currentEpoch() view returns (uint256)",
   "function canRoll(address wallet) view returns (bool)",
   "function lastRollEpoch(address wallet) view returns (uint256)",
-  "function priceOf(uint32 pins) view returns (uint256)",
-  "function faces(uint256 tokenId) view returns (uint64 seed, uint32 pins, uint8 one, address renderer)",
+  "function priceOf(uint64 pins) view returns (uint256)",
+  "function faces(uint256 tokenId) view returns (uint64 seed, uint64 pins, uint8 one, address renderer)",
   "function ownerOf(uint256 tokenId) view returns (address)",
-  "function roll(uint32 pins) payable returns (uint256)",
+  "function roll(uint64 pins) payable returns (uint256)",
   "function rollForTreasury() returns (uint256)",
 ]);
-export const ROLL_SELECTOR = toFunctionSelector("function roll(uint32 pins)");
-const ROLLED = parseAbiItem("event Rolled(uint256 indexed tokenId, address indexed to, uint64 seed, uint32 pins, uint8 one, uint256 paid)");
+export const ROLL_SELECTOR = toFunctionSelector("function roll(uint64 pins)");
+const ROLLED = parseAbiItem("event Rolled(uint256 indexed tokenId, address indexed to, uint64 seed, uint64 pins, uint8 one, uint256 paid)");
 
-export type FaceRecord = { id: number; seed: bigint; pins: number; one: number; renderer: Address };
+export type FaceRecord = { id: number; seed: bigint; pins: bigint; one: number; renderer: Address };
 export type Roll = { id: number; to: Address; tx: Hex; block: bigint; at: number; paid: bigint };
 
 export type ChainState = {
@@ -78,8 +78,8 @@ async function multicallBatch<T>(ids: number[], fn: "faces" | "ownerOf"): Promis
 async function refreshFaces(total: number): Promise<void> {
   const missing: number[] = [];
   for (let id = 1; id <= total; id++) if (!faces.has(id)) missing.push(id);
-  const res = await multicallBatch<readonly [bigint, number, number, Address]>(missing, "faces");
-  res.forEach((r, i) => { if (r) faces.set(missing[i], { id: missing[i], seed: r[0], pins: Number(r[1]), one: Number(r[2]), renderer: r[3] }); });
+  const res = await multicallBatch<readonly [bigint, bigint, number, Address]>(missing, "faces");
+  res.forEach((r, i) => { if (r) faces.set(missing[i], { id: missing[i], seed: r[0], pins: r[1], one: Number(r[2]), renderer: r[3] }); });
 }
 
 /** Recent tokens refresh every call; the rest every 10 minutes. */

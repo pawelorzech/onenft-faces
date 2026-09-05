@@ -7,7 +7,7 @@
  * reader could misunderstand. Facts (numbers, addresses, paths) stay exact.
  */
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
-import { traitsOf, svgOf, attributesOf, rarityOf, groundOf, faceOfDay, packPins, unpackPins, pinOk, PINNABLE, PIN_PRICES_WEI, combinations, type Traits, type Pins } from "./faces.ts";
+import { traitsOf, svgOf, attributesOf, rarityOf, groundOf, faceOfDay, packPins, unpackPins, pinOk, skinPinOk, SKINS, PINNABLE, PIN_KEYS, MAX_PINS, PIN_PRICES_WEI, combinations, type Traits, type Pins } from "./faces.ts";
 import { ROLL_SELECTOR, type ChainState, type FaceRecord } from "./contract.ts";
 
 export type Names = Map<string, string>;
@@ -244,14 +244,15 @@ function builderScript(chain: ChainState | null): string {
     explorer: chain ? explorer(chain.chainId) : "",
     selector: ROLL_SELECTOR,
     prices: PIN_PRICES_WEI.map((p) => p.toString()),
-    slots: PINNABLE.map((k) => SLOTS[k].slot),
+    keys: Array.from({ length: 8 }, (_, k) => PIN_KEYS[k] ?? null),
+    maxPins: MAX_PINS,
   });
   return `<script>
 (function(){
 var CFG=${cfg};var pins={};var btn=document.getElementById('roll');var out=document.getElementById('msg');var prev=document.getElementById('preview');var price=document.getElementById('price');var keep=document.getElementById('keep');var clear=document.getElementById('clear');
 function say(t){if(out)out.textContent=t}
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
-function packed(){var v='';CFG.slots.forEach(function(s){var p=pins[s];v+=(p===undefined?'ff':('0'+p.toString(16)).slice(-2))});return v}
+function packed(){var v='';CFG.keys.forEach(function(s){var p=s?pins[s]:undefined;v+=(p===undefined?'ff':('0'+p.toString(16)).slice(-2))});return v}
 function count(){return Object.keys(pins).length}
 function fmt(wei){var n=Number(wei)/1e18;return n?n+' ETH':'free'}
 function update(){
@@ -259,10 +260,10 @@ function update(){
   prev.src='/preview.svg?p='+packed();
   var n=count();if(price)price.textContent=fmt(CFG.prices[n]);
   if(btn)btn.textContent=n?'Roll with '+n+(n===1?' pin':' pins'):'Roll for free';
-  CFG.slots.forEach(function(s){var dd=keep.querySelector('[data-keep="'+s+'"]');var b=document.querySelector('.items button.on[data-slot="'+s+'"]');dd.innerHTML=b?'<b>'+b.getAttribute('title')+'</b>':'<span class="luck">luck decides</span>'});
+  CFG.keys.forEach(function(s){if(!s)return;var dd=keep.querySelector('[data-keep="'+s+'"]');var b=document.querySelector('.items button.on[data-slot="'+s+'"]');dd.innerHTML=b?'<b>'+b.getAttribute('title')+'</b>':'<span class="luck">luck decides</span>'});
   if(clear)clear.hidden=!n;
 }
-document.querySelectorAll('.items button').forEach(function(b){b.addEventListener('click',function(){var s=b.dataset.slot,i=+b.dataset.item;if(pins[s]===i){delete pins[s]}else{if(pins[s]===undefined&&count()>=3){say('Three pins at most. Luck keeps one.');return}pins[s]=i}say('');update()})});
+document.querySelectorAll('.items button').forEach(function(b){b.addEventListener('click',function(){var s=b.dataset.slot,i=+b.dataset.item;if(pins[s]===i){delete pins[s]}else{if(pins[s]===undefined&&count()>=CFG.maxPins){say('Three pins at most. Luck keeps the rest.');return}pins[s]=i}say('');update()})});
 if(clear)clear.addEventListener('click',function(){pins={};update()});
 if(btn)btn.addEventListener('click',async function(){
   var eth=window.ethereum;
@@ -296,7 +297,12 @@ function galleries(): string {
     const items = s.items.map((it, i) => pinOk(k, i) ? `<button type="button" data-slot="${s.slot}" data-item="${i}" title="${esc(it.name)}"><img src="/item/${s.slot}/${i}.svg" alt="${esc(it.name)}" width="72" height="72" loading="lazy">${it.tier === "uncommon" ? `<span class="u">u</span>` : ""}</button>` : "").join("");
     const rareCount = s.items.filter((it) => it.tier === "rare" || it.tier === "legendary").length;
     return `<div class="gallery"><h3 class="syne">${esc(s.trait)}<span>${s.items.filter((it, i) => pinOk(k, i)).length} to pin, ${rareCount} only by luck</span></h3><div class="items px">${items}</div></div>`;
-  }).join("");
+  }).join("") + skinGallery();
+}
+function skinGallery(): string {
+  const items = SKINS.map((sk, i) => skinPinOk(i) ? `<button type="button" data-slot="skin" data-item="${i}" title="${esc(sk.name)}"><img src="/skin/${i}.svg" alt="${esc(sk.name)}" width="72" height="72" loading="lazy">${sk.tier === "uncommon" ? `<span class="u">u</span>` : ""}</button>` : "").join("");
+  const rare = SKINS.filter((sk) => sk.tier === "rare" || sk.tier === "legendary").length;
+  return `<div class="gallery"><h3 class="syne">Skin<span>${SKINS.filter((_, i) => skinPinOk(i)).length} to pin, ${rare} only by luck</span></h3><div class="items px">${items}</div></div>`;
 }
 
 export function homePage(chain: ChainState | null, epoch: number, names: Names = NO_NAMES): string {
@@ -318,7 +324,7 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
   }
   const badge = chain && chain.chainId !== 8453 ? ` <span class="testnet">${chainName(chain.chainId)} testnet</span>` : "";
   const left = chain ? chain.secondsLeft : 86400 - (Math.floor(Date.now() / 1000) % 86400);
-  const keep = `<dl class="keep" id="keep">${PINNABLE.map((k) => `<dt>${esc(SLOTS[k].trait.toLowerCase())}</dt><dd data-keep="${SLOTS[k].slot}"><span class="luck">luck decides</span></dd>`).join("")}${SLOTS.filter((s) => !s.pinnable).map((s) => `<dt>${esc(s.trait.toLowerCase())}</dt><dd><span class="luck">luck, always</span></dd>`).join("")}<dt>colours</dt><dd><span class="luck">luck, always</span></dd></dl>`;
+  const keep = `<dl class="keep" id="keep">${PINNABLE.map((k) => `<dt>${esc(SLOTS[k].trait.toLowerCase())}</dt><dd data-keep="${SLOTS[k].slot}"><span class="luck">luck decides</span></dd>`).join("")}<dt>skin</dt><dd data-keep="skin"><span class="luck">luck decides</span></dd>${SLOTS.filter((s) => !s.pinnable).map((s) => `<dt>${esc(s.trait.toLowerCase())}</dt><dd><span class="luck">luck, always</span></dd>`).join("")}<dt>other colours</dt><dd><span class="luck">luck, always</span></dd></dl>`;
   const cta = chain
     ? `<div class="price"><span class="small">Today's roll</span><span class="syne" id="price">free</span></div>
 <button class="cta syne" id="roll">Roll for free</button>
@@ -330,7 +336,7 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
 <aside><div class="stick">
 <a class="mark syne" href="/">${SITE}</a>
 <h1 class="syne">One face<br>a day,<br>yours to pin</h1>
-<p class="lead">Every wallet rolls one face a day, free. Pin a background, a top, eyes or hair and pay a little; the rest is luck. Rare things cannot be bought. A roll without pins can land on a one of one.</p>
+<p class="lead">Every wallet rolls one face a day, free. Pin a background, a top, eyes, hair or a skin tone and pay a little; the rest is luck. Rare things cannot be bought. A roll without pins can land on a one of one.</p>
 <hr>
 <div style="display:flex;gap:34px"><div><div class="big syne">${num(total)}</div><div class="small">of ${num(MAX_SUPPLY)} rolled</div></div>${chain ? `<div><div class="syne" style="font-weight:700;font-size:26px;line-height:1">${chain.poolLeft}</div><div class="small">1/1 left</div></div><div id="yours" hidden><div class="syne" style="font-weight:700;font-size:26px;line-height:1">0</div><div class="small">yours</div></div>` : ""}</div>
 <div style="display:flex;flex-direction:column;gap:12px">${cta}</div>
@@ -338,8 +344,8 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
 </div></aside>
 <main>
 <section class="builder">
-<div><div class="preview px"><img id="preview" src="/preview.svg?p=ffffffff" alt="Your pins on a grey stand-in; grey parts are luck's" width="512" height="512"></div>
-<p class="small" style="margin-top:12px">Grey is what luck decides. Colour is what you pin. Skin, head, mouth, accessory and every colour are always luck.</p>
+<div><div class="preview px"><img id="preview" src="/preview.svg?p=ffffffffffffffff" alt="Your pins on a grey stand-in; grey parts are luck's" width="512" height="512"></div>
+<p class="small" style="margin-top:12px">Grey is what luck decides. Colour is what you pin. Head, mouth, accessory and the other colours are always luck.</p>
 ${keep}</div>
 <div class="galleries">${galleries()}</div>
 </section>
@@ -385,7 +391,7 @@ export function howPage(chain: ChainState | null, epoch: number): string {
 ${topBar()}
 <h2 class="syne">One roll a day, and what you may pin</h2>
 <p><strong>The roll.</strong> Every wallet may call <code>roll</code> once per UTC day. The contract mixes the block's randomness, your address and the token number into a 64-bit seed, and the seed decides everything: seven layers, five colours, and whether this roll takes a one of one. A free roll costs gas and nothing else.</p>
-<p><strong>The pins.</strong> Four layers can be pinned: background, top, eyes, hair or hat. You may pin up to three of them, to any common or uncommon item. One pin costs 0.0005 ETH, two cost 0.0015, three cost 0.004. The fee goes to the author. Rare and legendary items cannot be pinned; they come from luck or not at all. A roll with pins never lands on a one of one.</p>
+<p><strong>The pins.</strong> Five things can be pinned: background, top, eyes, hair or hat, and skin tone. You may pin up to three of them, to any common or uncommon item; the pinnable skins are the human tones. One pin costs 0.0005 ETH, two cost 0.0015, three cost 0.004. The fee goes to the author. Rare and legendary items cannot be pinned; they come from luck or not at all. A roll with pins never lands on a one of one.</p>
 <p><strong>The layers.</strong> ${SLOTS.map((s) => `${s.items.length} ${s.trait.toLowerCase()}`).join(", ")}. Every item has a tier: common, uncommon, rare, legendary. The weight tables live in the contract; <a href="/rarity">the rarity page</a> lists each item's odds per roll. Skin, hair colour, top colour, ground and accent colour are drawn on top of that. ${num(combinations())} combinations before the one of ones.</p>
 <p><strong>The one of ones.</strong> ${ONE_OF_ONES.length} full drawings sit in a pool. A roll without pins takes one with odds of pool left over tokens left: about 1 in ${Math.round(10000 / ONE_OF_ONES.length)} on the first roll, better as the end nears, so on average the whole pool is rolled by the last token. The contract removes a rolled one from the pool; each exists once. <a href="/ones">See what is left.</a></p>
 <p><strong>The treasury.</strong> The author's wallet gets one free roll a day too, with the same luck as everyone. Anyone may trigger it; the site does, at midnight UTC.</p>
@@ -402,7 +408,7 @@ ${topBar()}
 seed = keccak(prevrandao, wallet, tokenId, block) as u64
 draw(i) = mix(seed + i) mod 10000
 for slot in 0..6: item[slot] = walk(WEIGHTS[slot], draw(slot)), or the pin
-skin = walk(SKIN_WEIGHTS, draw(7)); hair, top, ground, accent = draw(8..11) mod count
+skin = walk(SKIN_WEIGHTS, draw(7)), or the pin; hair, top, ground, accent = draw(8..11) mod count
 lucky = no pins and draw(12) < pool size * 10000 / tokens left; one = pool[draw(13) mod pool size]</code></pre>
 <p>Everything here is CC0. If you build on it, write to me.</p>
 <p class="small"><a href="/">Back to the roll</a>. Every collection: <a href="https://${PARENT}">${PARENT}</a>.</p>

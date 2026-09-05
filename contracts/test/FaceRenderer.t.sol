@@ -38,7 +38,7 @@ contract FaceRendererTest is Test {
         for (uint256 i = 0; i < count; i++) {
             string memory k = string.concat("$[", i.toString(), "]");
             uint64 seed = uint64(parseUint(vm.parseJsonString(json, string.concat(k, ".seed"))));
-            uint32 pins = uint32(vm.parseJsonUint(json, string.concat(k, ".pins")));
+            uint64 pins = uint64(parseUint(vm.parseJsonString(json, string.concat(k, ".pins"))));
             uint8 one = uint8(vm.parseJsonUint(json, string.concat(k, ".one")));
             assertEq(keccak256(bytes(r.svg(seed, pins, one))), keccak256(bytes(vm.parseJsonString(json, string.concat(k, ".svg")))), string.concat(k, " svg"));
             assertEq(keccak256(bytes(r.json(1, seed, pins, one))), keccak256(bytes(vm.parseJsonString(json, string.concat(k, ".json")))), string.concat(k, " json"));
@@ -61,23 +61,26 @@ contract FaceRendererTest is Test {
     }
 
     function test_PinsAreCheckedAgainstTiersAndCounts() public view {
-        assertTrue(r.pinsOk(0xffffffff));
-        assertTrue(r.pinsOk(0x00ffffff)); // background 0, Flat, common
-        assertFalse(r.pinsOk(0xff0fffff)); // top 15 does not exist
-        assertFalse(r.pinsOk(0xffff0dff)); // eyes 13 Cyclops, legendary
-        assertEq(r.pinCount(0xffffffff), 0);
-        assertEq(r.pinCount(0x0001ffff), 2);
-        assertEq(r.pinCount(0x00010203), 4);
+        assertTrue(r.pinsOk(type(uint64).max));
+        assertTrue(r.pinsOk(0x00ffffffffffffff)); // background 0, Flat, common
+        assertFalse(r.pinsOk(0xff0fffffffffffff)); // top 15 does not exist
+        assertFalse(r.pinsOk(0xffff0dffffffffff)); // eyes 13 Cyclops, legendary
+        assertTrue(r.pinsOk(0xffffffff02ffffff)); // skin 2 Tan, common
+        assertFalse(r.pinsOk(0xffffffff12ffffff)); // skin 18 Gold, legendary
+        assertFalse(r.pinsOk(0xffffffffff00ffff)); // a spare byte set
+        assertEq(r.pinCount(type(uint64).max), 0);
+        assertEq(r.pinCount(0x0001ffffffffffff), 2);
+        assertEq(r.pinCount(0x00010203ffffffff), 4);
     }
 
     function testFuzz_EverySeedRenders(uint64 seed) public view {
-        string memory s = r.svg(seed, 0xffffffff, 255);
+        string memory s = r.svg(seed, type(uint64).max, 255);
         assertGt(bytes(s).length, 1000);
     }
 
     function test_TokenUriGas() public view {
         uint256 g = gasleft();
-        r.tokenURI(1, 12345, 0xffffffff, 255);
+        r.tokenURI(1, 12345, type(uint64).max, 255);
         uint256 used = g - gasleft();
         assertLt(used, 10_000_000, "tokenURI gas");
     }

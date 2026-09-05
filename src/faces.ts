@@ -44,8 +44,11 @@ const sw = (name: string, main: string, shade: string, light: string, tier: Tier
 export const SKINS: Swatch[] = [
   sw("Porcelain", "#f3d6bd", "#d9b092", "#fbe9d9"), sw("Peach", "#eebc94", "#cf9668", "#f6d6b8"), sw("Tan", "#d39a68", "#ad7547", "#e4b78d"),
   sw("Olive", "#b98a5c", "#93673c", "#d1a97e"), sw("Brown", "#9a6541", "#75482c", "#b5825f"), sw("Deep", "#6a4430", "#4b2d1e", "#86604a"),
-  sw("Ebony", "#3e2a20", "#291a12", "#5a4235"), sw("Mint", "#9fd3a2", "#6fa874", "#c6e8c6", "uncommon"), sw("Sky", "#9db8e0", "#6f8fc0", "#c3d5ee", "uncommon"),
-  sw("Lilac", "#c3a8d9", "#9a7fb5", "#dcc9e8", "uncommon"), sw("Ash", "#b8b6ad", "#8d8b83", "#d3d1c9", "rare"), sw("Gold", "#e3c15a", "#b8953a", "#f0da93", "legendary"),
+  sw("Ebony", "#3e2a20", "#291a12", "#5a4235"),
+  sw("Rosy", "#f0bfb0", "#d19787", "#f8dcd3", "uncommon"), sw("Sallow", "#e1c78f", "#b9a06a", "#ecdcb4", "uncommon"), sw("Bronze", "#b4753f", "#8c5729", "#c9955f", "uncommon"), sw("Umber", "#553524", "#3a2318", "#704b36", "uncommon"),
+  sw("Mint", "#9fd3a2", "#6fa874", "#c6e8c6", "rare"), sw("Sky", "#9db8e0", "#6f8fc0", "#c3d5ee", "rare"), sw("Lilac", "#c3a8d9", "#9a7fb5", "#dcc9e8", "rare"),
+  sw("Ash", "#b8b6ad", "#8d8b83", "#d3d1c9", "rare"), sw("Coral", "#f2937a", "#c86f5a", "#f7b5a3", "rare"), sw("Teal", "#5fb3ad", "#3f8a85", "#8fcfca", "rare"), sw("Moss", "#7a9a4a", "#597333", "#9cb96f", "rare"),
+  sw("Gold", "#e3c15a", "#b8953a", "#f0da93", "legendary"), sw("Onyx", "#1e1c22", "#0e0d10", "#3a3742", "legendary"), sw("Neon", "#c8ff5a", "#93c93a", "#e0ff9a", "legendary"),
 ];
 /** Skin tones draw through tiers too; the other colours are uniform. */
 export const SKIN_WEIGHTS = weightsOf(SKINS as unknown as Item[]);
@@ -77,7 +80,11 @@ export type Traits = { items: number[]; skin: number; hair: number; top: number;
 /** Pins by slot name, pinnable slots only, common or uncommon items only. */
 export type Pins = Partial<Record<string, number>>;
 export const PINNABLE = SLOTS.map((s, i) => (s.pinnable ? i : -1)).filter((i) => i >= 0);
+/** Pin keys in byte order: the pinnable slots, then skin. Eight bytes in a uint64, 0xff for none. */
+export const PIN_KEYS = [...PINNABLE.map((k) => SLOTS[k].slot), "skin"];
 export const NO_PIN = 0xff;
+export const NO_PINS = 0xffffffffffffffffn;
+export const MAX_PINS = 3;
 /** The 1/1 odds adapt: a roll without pins hits the pool with probability poolLeft / tokensLeft, so on average every 1/1 is rolled by the end. */
 export const MAX_SUPPLY = 10000;
 export const PIN_PRICES_WEI = [0n, 500_000_000_000_000n, 1_500_000_000_000_000n, 4_000_000_000_000_000n];
@@ -88,15 +95,26 @@ export function pinOk(slot: number, item: number): boolean {
   const t = s.items[item]?.tier;
   return t === "common" || t === "uncommon";
 }
-/** uint32: one byte per pinnable slot in PINNABLE order, 0xff for none. */
-export function packPins(pins: Pins): number {
-  let v = 0;
-  PINNABLE.forEach((slot, k) => { const p = pins[SLOTS[slot].slot]; v |= ((p === undefined ? NO_PIN : p) & 0xff) << (8 * (3 - k)); });
-  return v >>> 0;
+/** A skin may be pinned when it is a human tone: common or uncommon. */
+export function skinPinOk(i: number): boolean {
+  const t = SKINS[i]?.tier;
+  return t === "common" || t === "uncommon";
 }
-export function unpackPins(v: number): Pins {
+export function pinKeyOk(key: string, value: number): boolean {
+  if (key === "skin") return skinPinOk(value);
+  const k = SLOTS.findIndex((s) => s.slot === key);
+  return k >= 0 && pinOk(k, value);
+}
+/** uint64: one byte per PIN_KEYS entry, high byte first, 0xff for none. */
+export function packPins(pins: Pins): bigint {
+  let v = 0n;
+  for (let k = 0; k < 8; k++) { const key = PIN_KEYS[k]; const p = key === undefined ? undefined : pins[key]; v |= BigInt((p === undefined ? NO_PIN : p) & 0xff) << BigInt(8 * (7 - k)); }
+  return v;
+}
+export function unpackPins(v: bigint | number): Pins {
   const out: Pins = {};
-  PINNABLE.forEach((slot, k) => { const b = (v >>> (8 * (3 - k))) & 0xff; if (b !== NO_PIN) out[SLOTS[slot].slot] = b; });
+  const b = BigInt(v);
+  PIN_KEYS.forEach((key, k) => { const x = Number((b >> BigInt(8 * (7 - k))) & 0xffn); if (x !== NO_PIN) out[key] = x; });
   return out;
 }
 export const pinCount = (pins: Pins) => Object.keys(pins).length;
@@ -122,7 +140,9 @@ export function traitsOf(seed: bigint, pins: Pins = {}, one?: number): Traits {
     if (!pinOk(k, pin)) throw new Error(`${s.slot} ${pin} cannot be pinned`);
     return pin;
   });
-  const t: Traits = { items, skin: pickWeighted(SKIN_WEIGHTS, d[S]), hair: d[S + 1] % HAIRS.length, top: d[S + 2] % TOPCOLORS.length, ground: d[S + 3] % GROUNDS.length, accent: d[S + 4] % ACCENTS.length };
+  let skin = pickWeighted(SKIN_WEIGHTS, d[S]);
+  if (pins.skin !== undefined) { if (!skinPinOk(pins.skin)) throw new Error(`skin ${pins.skin} cannot be pinned`); skin = pins.skin; }
+  const t: Traits = { items, skin, hair: d[S + 1] % HAIRS.length, top: d[S + 2] % TOPCOLORS.length, ground: d[S + 3] % GROUNDS.length, accent: d[S + 4] % ACCENTS.length };
   if (one !== undefined) t.one = one;
   return t;
 }
@@ -233,6 +253,10 @@ export function combinations(): bigint {
 /** A neutral base every thumbnail and preview builds on. */
 export const BASE_TRAITS: Traits = { items: SLOTS.map((s) => s.items.findIndex((i) => i.name === (s.slot === "head" ? "Round" : s.slot === "eyes" ? "Dots" : s.slot === "mouth" ? "Flat" : s.slot === "top" ? "Tee" : s.slot === "background" ? "Flat" : s.slot === "hair" ? "Bald" : "None"))), skin: 1, hair: 1, top: 3, ground: 10, accent: 0 };
 
+/** One skin tone on the neutral base, for the gallery. */
+export function skinSvg(i: number, px = 96): string {
+  return svgOf({ ...BASE_TRAITS, skin: i }, px);
+}
 /** One item on the neutral base, for the galleries. */
 export function itemSvg(slot: number, item: number, px = 96): string {
   const t: Traits = { ...BASE_TRAITS, items: BASE_TRAITS.items.slice() };
@@ -245,6 +269,7 @@ export function previewSvg(pins: Pins, px = 512): string {
   const t: Traits = { ...BASE_TRAITS, items: BASE_TRAITS.items.slice(), skin: SKINS.findIndex((s) => s.name === "Ash"), hair: HAIRS.findIndex((h) => h.name === "Silver"), top: TOPCOLORS.findIndex((c) => c.name === "Grey"), ground: GROUNDS.findIndex((g) => g.name === "Steel"), accent: ACCENTS.findIndex((a) => a.name === "White") };
   const has = (slot: string) => pins[slot] !== undefined;
   SLOTS.forEach((s, k) => { if (has(s.slot)) t.items[k] = pins[s.slot]!; });
+  if (has("skin")) t.skin = pins.skin!;
   if (has("background")) t.ground = 3;
   if (has("hair")) t.hair = 1;
   if (has("top")) t.top = 3;

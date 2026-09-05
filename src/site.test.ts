@@ -11,7 +11,7 @@ function fakeChain(): ChainState {
   return {
     address: "0x3333333333333333333333333333333333333333", chainId: 84532, author: A, renderer: "0x4444444444444444444444444444444444444444", rendererLocked: false,
     totalSupply: 3, poolLeft: 5, secondsLeft: 3600, epoch: 20701,
-    faces: new Map([[1, { id: 1, seed: 11n, pins: 0xffffffff, one: 255, renderer: "0x44" as any }], [2, { id: 2, seed: 12n, pins: 0x0301ffff, one: 255, renderer: "0x44" as any }], [3, { id: 3, seed: 13n, pins: 0xffffffff, one: 0, renderer: "0x44" as any }]]),
+    faces: new Map([[1, { id: 1, seed: 11n, pins: 0xffffffffffffffffn, one: 255, renderer: "0x44" as any }], [2, { id: 2, seed: 12n, pins: 0x0301ffffffffffffn, one: 255, renderer: "0x44" as any }], [3, { id: 3, seed: 13n, pins: 0xffffffffffffffffn, one: 0, renderer: "0x44" as any }]]),
     owners: new Map([[1, A], [2, B], [3, B]]), rolls: new Map(),
   };
 }
@@ -20,6 +20,7 @@ test("home without a contract renders the builder and says rolling opens later",
   const h = homePage(null, 20701);
   expect(h).toContain("Rolling opens with the contract");
   expect(h).toContain('data-slot="hair"');
+  expect(h).toContain('data-slot="skin"');
   expect(h).not.toContain('id="roll"');
 });
 
@@ -37,7 +38,7 @@ test("face page shows pins, rarity and links", () => {
   const h = facePage(2, c.faces.get(2)!, c);
   expect(h).toContain("2 pins (background, top)");
   expect(h).toContain("/face/2.svg");
-  expect(unpackPins(0x0301ffff)).toEqual({ background: 3, top: 1 });
+  expect(unpackPins(0x0301ffffffffffffn)).toEqual({ background: 3, top: 1 });
 });
 
 test("preview and item images are 32x32 svgs", () => {

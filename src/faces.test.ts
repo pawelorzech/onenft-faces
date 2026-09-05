@@ -37,12 +37,15 @@ test("rare and legendary items cannot be pinned", () => {
   expect(pinOk(0, 999)).toBe(false);
 });
 
-test("pins pack to one byte per pinnable slot", () => {
+test("pins pack to one byte per key: four slots, skin, three spare", () => {
   expect(PINNABLE.length).toBe(4);
-  expect(packPins({})).toBe(0xffffffff);
-  const pins = { background: 3, hair: 7 };
+  expect(packPins({})).toBe(0xffffffffffffffffn);
+  const pins = { background: 3, hair: 7, skin: 2 };
   expect(unpackPins(packPins(pins))).toEqual(pins);
-  expect(packPins({ background: 3 })).toBe(0x03ffffff);
+  expect(packPins({ background: 3 })).toBe(0x03ffffffffffffffn);
+  expect(packPins({ skin: 1 })).toBe(0xffffffff01ffffffn);
+  expect(traitsOf(42n, { skin: 2 }).skin).toBe(2);
+  expect(() => traitsOf(42n, { skin: SKINS.findIndex((s) => s.name === "Gold") })).toThrow();
 });
 
 test("the 1/1 odds are pool over tokens left", () => {
@@ -74,7 +77,8 @@ test("svg is 32x32 rects only and metadata is one JSON line", () => {
   expect(j.image.startsWith("data:image/svg+xml;base64,")).toBe(true);
 });
 
-test("skin tiers: human tones common, fantasy rarer", () => {
+test("skin tiers: human tones common or uncommon and pinnable, fantasy rarer", () => {
   expect(SKINS.filter((s) => s.tier === "common").length).toBe(7);
+  expect(SKINS.filter((s) => s.tier === "rare").length).toBeGreaterThan(5);
   expect(SKIN_WEIGHTS[SKINS.findIndex((s) => s.name === "Gold")]).toBeLessThan(40);
 });
