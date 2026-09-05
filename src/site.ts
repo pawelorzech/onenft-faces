@@ -107,6 +107,7 @@ button.cta[disabled]{opacity:.55;cursor:default}
 .testnet{display:inline-block;padding:3px 8px;border:1px solid var(--line);font-size:13px;color:var(--muted)}
 .px,.px svg,.px img{image-rendering:pixelated}
 .builder{padding:38px 34px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:minmax(0,396px) minmax(280px,1fr);gap:34px;align-items:start}
+.stage{position:sticky;top:24px;align-self:start}
 .preview{width:100%;max-width:396px;aspect-ratio:1;box-shadow:0 0 0 1px var(--line);background:var(--soft)}
 .preview img{display:block;width:100%;height:100%}
 .keep{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:16px;margin:0}
@@ -165,7 +166,13 @@ table.tr td img{width:40px;height:40px;vertical-align:middle;margin-right:8px;bo
 .traits dd{margin:0}
 .share{display:flex;gap:16px;flex-wrap:wrap;font-size:15px}
 pre.snip{margin:0;padding:14px;background:var(--soft);overflow-x:auto;font-size:13px;line-height:1.5;font-family:ui-monospace,Menlo,monospace}
-@media (max-width:1180px){.builder{grid-template-columns:1fr}.preview{max-width:460px}}
+@media (max-width:1180px){
+ .builder{grid-template-columns:1fr}
+ .stage{top:0;z-index:2;background:var(--bg);display:grid;grid-template-columns:140px 1fr;gap:14px;align-items:start;padding:10px 0;margin:-10px 0 0;border-bottom:1px solid var(--line)}
+ .stage .preview{max-width:140px}
+ .stage .hint{display:none}
+ .stage .keep{font-size:14px;gap:2px 12px}
+}
 @media (max-width:900px){
  .page{grid-template-columns:1fr}
  aside{border-right:0;border-bottom:1px solid var(--line);padding:18px 20px}
@@ -371,8 +378,8 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
 </div></aside>
 <main>
 <section class="builder">
-<div><div class="preview px"><img id="preview" src="/preview.svg?p=ffffffffffffffffffffffffffffffff" alt="Your pins on a grey stand-in; grey parts are luck's" width="512" height="512"></div>
-<p class="small" style="margin-top:12px">Grey is what luck decides. Colour is what you pin. Rare and legendary things cannot be pinned; they come from luck or not at all.</p>
+<div class="stage"><div class="preview px"><img id="preview" src="/preview.svg?p=ffffffffffffffffffffffffffffffff" alt="Your pins on a grey stand-in; grey parts are luck's" width="512" height="512"></div>
+<p class="small hint" style="margin-top:12px">Grey is what luck decides. Colour is what you pin. Rare and legendary things cannot be pinned; they come from luck or not at all.</p>
 ${keep}</div>
 <div class="galleries">${galleries()}</div>
 </section>
