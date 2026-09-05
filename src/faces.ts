@@ -9,7 +9,7 @@
  * equal colour become SVG rects.
  */
 import { Canvas, N, ROLE } from "./pixels.ts";
-import { SLOTS, type Item, type Tier } from "./sprites.ts";
+import { SLOTS, ONE_OF_ONES, type Item, type Tier } from "./sprites.ts";
 
 const U64 = (1n << 64n) - 1n;
 export function mix64(x: bigint): bigint {
@@ -31,6 +31,8 @@ export function weightsOf(items: Item[]): number[] {
   return w;
 }
 export const WEIGHTS = SLOTS.map((s) => weightsOf(s.items));
+/** Skin tones draw through tiers too; the other colours are uniform. */
+export const SKIN_WEIGHTS = () => weightsOf(SKINS as unknown as Item[]);
 
 export function pickWeighted(w: number[], roll: number): number {
   let acc = 0;
@@ -39,13 +41,13 @@ export function pickWeighted(w: number[], roll: number): number {
 }
 
 // Colours. Each entry: name, main, shade, light.
-export type Swatch = { name: string; main: string; shade: string; light: string };
-const sw = (name: string, main: string, shade: string, light: string): Swatch => ({ name, main, shade, light });
+export type Swatch = { name: string; main: string; shade: string; light: string; tier: Tier };
+const sw = (name: string, main: string, shade: string, light: string, tier: Tier = "common"): Swatch => ({ name, main, shade, light, tier });
 export const SKINS: Swatch[] = [
   sw("Porcelain", "#f3d6bd", "#d9b092", "#fbe9d9"), sw("Peach", "#eebc94", "#cf9668", "#f6d6b8"), sw("Tan", "#d39a68", "#ad7547", "#e4b78d"),
   sw("Olive", "#b98a5c", "#93673c", "#d1a97e"), sw("Brown", "#9a6541", "#75482c", "#b5825f"), sw("Deep", "#6a4430", "#4b2d1e", "#86604a"),
-  sw("Ebony", "#3e2a20", "#291a12", "#5a4235"), sw("Mint", "#9fd3a2", "#6fa874", "#c6e8c6"), sw("Sky", "#9db8e0", "#6f8fc0", "#c3d5ee"),
-  sw("Lilac", "#c3a8d9", "#9a7fb5", "#dcc9e8"), sw("Ash", "#b8b6ad", "#8d8b83", "#d3d1c9"), sw("Gold", "#e3c15a", "#b8953a", "#f0da93"),
+  sw("Ebony", "#3e2a20", "#291a12", "#5a4235"), sw("Mint", "#9fd3a2", "#6fa874", "#c6e8c6", "uncommon"), sw("Sky", "#9db8e0", "#6f8fc0", "#c3d5ee", "uncommon"),
+  sw("Lilac", "#c3a8d9", "#9a7fb5", "#dcc9e8", "uncommon"), sw("Ash", "#b8b6ad", "#8d8b83", "#d3d1c9", "rare"), sw("Gold", "#e3c15a", "#b8953a", "#f0da93", "legendary"),
 ];
 export const HAIRS: Swatch[] = [
   sw("Black", "#2a2320", "#171311", "#4a403b"), sw("Brown", "#5b3a22", "#3f2716", "#7f5636"), sw("Chestnut", "#8a5a2b", "#65401c", "#a97844"),
@@ -71,7 +73,9 @@ export const ACCENTS: Swatch[] = [
 ];
 const OUTLINE = "#1c1a19", WHITE = "#f6f4ee", RED = "#d9534f";
 
-export type Traits = { items: number[]; skin: number; hair: number; top: number; ground: number; accent: number };
+export type Traits = { items: number[]; skin: number; hair: number; top: number; ground: number; accent: number; one?: number };
+/** One roll in 10,000 lands in the 1/1 pool while it has anything left. */
+export const ONE_OF_ONE_CHANCE = 1;
 export type Pins = Partial<Record<string, number>>;
 
 /** Draws from the seed: one per slot then the colours, each mix64(seed + i) mod range. */
@@ -87,13 +91,21 @@ export function traitsOf(seed: bigint, pins: Pins = {}): Traits {
     if (t !== "common" && t !== "uncommon") throw new Error(`${s.slot} ${pin} cannot be pinned`);
     return pin;
   });
-  return { items, skin: draw(SKINS.length), hair: draw(HAIRS.length), top: draw(TOPCOLORS.length), ground: draw(GROUNDS.length), accent: draw(ACCENTS.length) };
+  const skin = pickWeighted(SKIN_WEIGHTS(), draw(10000));
+  const t: Traits = { items, skin, hair: draw(HAIRS.length), top: draw(TOPCOLORS.length), ground: draw(GROUNDS.length), accent: draw(ACCENTS.length) };
+  const lucky = draw(10000) < ONE_OF_ONE_CHANCE;
+  if (lucky && Object.keys(pins).length === 0 && pool.length) t.one = pool[draw(pool.length)];
+  return t;
 }
+/** Index of every 1/1 still unminted; the contract keeps the real one. */
+export const pool: number[] = ONE_OF_ONES.map((_, i) => i);
 
 /** Palette indices: 0 none, 1 outline, 2 white, 3 red, then 3 per group (main, shade, light): skin 4, hair 7, top 10, ground 13, accent 16. */
 export function paletteOf(t: Traits): string[] {
   const g = (s: Swatch) => [s.main, s.shade, s.light];
-  return ["", OUTLINE, WHITE, RED, ...g(SKINS[t.skin]), ...g(HAIRS[t.hair]), ...g(TOPCOLORS[t.top]), ...g(GROUNDS[t.ground]), ...g(ACCENTS[t.accent])];
+  const base = ["", OUTLINE, WHITE, RED, ...g(SKINS[t.skin]), ...g(HAIRS[t.hair]), ...g(TOPCOLORS[t.top]), ...g(GROUNDS[t.ground]), ...g(ACCENTS[t.accent])];
+  if (t.one !== undefined) { const o = ONE_OF_ONES[t.one]; base.push(...o.main, ...o.second); }
+  return base;
 }
 const GROUP_BASE = { skin: 4, hair: 7, top: 10, bg: 13, acc: 16 } as const;
 
@@ -118,6 +130,15 @@ export const ROLE_MAPS = SLOTS.map((s) => roleMap(s.group));
 /** Composite to palette indices, then rim light: a main fill right of an outline takes its light. */
 export function composite(t: Traits): Uint8Array {
   const out = new Uint8Array(N * N);
+  if (t.one !== undefined) {
+    const bg = Canvas.fromRows(SLOTS[0].items[t.items[0]].rows), mb = ROLE_MAPS[0];
+    for (let i = 0; i < N * N; i++) if (bg.g[i]) out[i] = mb[bg.g[i]];
+    const c = Canvas.fromRows(ONE_OF_ONES[t.one].rows);
+    const m = [0, 1, 19, 20, 21, 22, 23, 2];
+    for (let i = 0; i < N * N; i++) if (c.g[i]) out[i] = m[c.g[i]];
+    for (let y = 0; y < N; y++) for (let x = 1; x < N; x++) { const v = out[y * N + x]; if ((v === 19 || v === 22) && out[y * N + x - 1] === 1) out[y * N + x] = v + 2; }
+    return out;
+  }
   SLOTS.forEach((s, k) => {
     const c = Canvas.fromRows(s.items[t.items[k]].rows);
     const m = ROLE_MAPS[k];
@@ -147,8 +168,9 @@ export function svgOf(t: Traits, px = 320): string {
 }
 
 export function attributesOf(t: Traits): { trait_type: string; value: string; tier?: Tier }[] {
+  if (t.one !== undefined) return [{ trait_type: "One of one", value: ONE_OF_ONES[t.one].name, tier: "legendary" }, { trait_type: "Background", value: SLOTS[0].items[t.items[0]].name }, { trait_type: "Ground", value: GROUNDS[t.ground].name }];
   const a = SLOTS.map((s, k) => ({ trait_type: s.trait, value: s.items[t.items[k]].name, tier: s.items[t.items[k]].tier }));
-  a.push({ trait_type: "Skin", value: SKINS[t.skin].name }, { trait_type: "Hair colour", value: HAIRS[t.hair].name }, { trait_type: "Top colour", value: TOPCOLORS[t.top].name }, { trait_type: "Ground", value: GROUNDS[t.ground].name }, { trait_type: "Accent", value: ACCENTS[t.accent].name });
+  a.push({ trait_type: "Skin", value: SKINS[t.skin].name, tier: SKINS[t.skin].tier }, { trait_type: "Hair colour", value: HAIRS[t.hair].name }, { trait_type: "Top colour", value: TOPCOLORS[t.top].name }, { trait_type: "Ground", value: GROUNDS[t.ground].name }, { trait_type: "Accent", value: ACCENTS[t.accent].name });
   return a;
 }
 

@@ -1,6 +1,6 @@
 /** Contact sheets for review: one per slot (every item on a neutral face) and a grid of random faces. */
 import { Resvg } from "@resvg/resvg-js";
-import { SLOTS } from "../src/sprites.ts";
+import { SLOTS, ONE_OF_ONES } from "../src/sprites.ts";
 import { face, svgOf, traitsOf, combinations, type Traits } from "../src/faces.ts";
 
 const BASE: Traits = { items: SLOTS.map((s) => (s.slot === "accessory" ? 0 : s.slot === "hair" ? 0 : s.slot === "background" ? 0 : 0)), skin: 1, hair: 1, top: 3, ground: 10, accent: 0 };
@@ -20,6 +20,10 @@ const which = process.argv[2] ?? "all";
 if (which === "all" || which === "slots") for (const [k, s] of SLOTS.entries()) {
   const tiles = s.items.map((it, i) => { const t = { ...BASE, items: BASE.items.slice() }; t.items[k] = i; return { svg: svgOf(t), label: `${it.name} (${it.tier[0]})` }; });
   await png(sheet(`${s.trait}: ${s.items.length} items${s.pinnable ? ", pinnable" : ""}`, tiles, 8, 128), `slot-${s.slot}.png`);
+}
+if (which === "all" || which === "ones") {
+  const tiles = ONE_OF_ONES.map((o, i) => ({ svg: svgOf({ ...BASE, one: i, ground: (i * 3) % 16 }), label: o.name }));
+  await png(sheet(`One of ones: ${ONE_OF_ONES.length} drawn`, tiles, 8, 128), "ones.png");
 }
 if (which === "all" || which === "faces") {
   const n = Number(process.argv[3] ?? 48);
