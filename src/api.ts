@@ -5,6 +5,7 @@ import { SITE, traitsOfRecord, isAuthor, opensea, explorer, MAX_SUPPLY, pinRule,
 import { unrevealed, type ChainState, type ChainStatus, type FaceRecord } from "./contract.ts";
 import type { RevealResult } from "./autoclaim.ts";
 import type { Address } from "viem";
+import { holderFacts } from "./facts.ts";
 
 /** How old the data in an answer is. `known` false means no chain read ever succeeded, so counts are null, never zero. */
 export function chainBlock(status: ChainStatus | null) {
@@ -63,7 +64,7 @@ export function stateJson(chain: ChainState | null, names: Names = NO_NAMES, sta
 
 export function holderJson(who: Address, chain: ChainState, names: Names = NO_NAMES, status: ChainStatus | null = null) {
   const mine = [...chain.owners].filter(([, o]) => o.toLowerCase() === who.toLowerCase()).map(([id]) => id).sort((a, b) => a - b);
-  return { address: who, name: names.get(who.toLowerCase()) ?? null, treasury: isAuthor(chain, who), count: mine.length, chain: chainBlock(status), faces: mine.map((id) => faceJson(chain.faces.get(id)!, chain, names, status)) };
+  return { address: who, name: names.get(who.toLowerCase()) ?? null, treasury: isAuthor(chain, who), count: mine.length, chain: chainBlock(status), facts: holderFacts(who, chain), faces: mine.map((id) => faceJson(chain.faces.get(id)!, chain, names, status)) };
 }
 
 /** The standing of one wallet's roll, for the builder's polling. */

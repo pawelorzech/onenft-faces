@@ -4,6 +4,7 @@ import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, svgOf
 import { SITE, REPO, PARENT, FILE_PREFIX, layout, topBar, esc, num, plural, label, isAuthor, tierTag, pageTraits, traitsOfRecord, stripSize, explorer, chainName, openseaCollection, opensea, shortAddr, MAX_SUPPLY, staleNote, whoBlock, sizePicker, downloadBar, connectScript, downloadScript, nameHeading, traitList, heldBy, rolledBy, dateOf, eth, type Names, NO_NAMES, IMG_Q } from "./site.ts";
 import type { ChainState, ChainStatus } from "./contract.ts";
 import type { Address } from "viem";
+import { holderFacts } from "./facts.ts";
 
 const pct = (w: number) => (w / 100).toFixed(w >= 100 ? 0 : 2) + "%";
 
@@ -68,6 +69,8 @@ export function holderPage(who: Address, handle: string, chain: ChainState, name
   const p = groundOf(pageTraits(chain, chain.epoch));
   const mine = [...chain.owners].filter(([, o]) => o.toLowerCase() === who.toLowerCase()).map(([id]) => id).sort((a, b) => b - a);
   const rawName = names.get(who.toLowerCase()) ?? shortAddr(who);
+  const facts = holderFacts(who, chain);
+  const factList = facts.length ? `<ul class="facts" aria-label="About these faces">${facts.map((f) => `<li><span class="fig syne">${esc(f.figure)}</span><span class="lab">${esc(f.label)}</span></li>`).join("")}</ul>` : "";
   const rows = mine.map((id) => {
     const f = chain.faces.get(id)!;
     const t = traitsOfRecord(f);
@@ -90,6 +93,7 @@ ${downloadBar(id, g.bg)}
 ${topBar(rawName)}
 ${staleNote(status)}
 <div><h2 class="syne">${nameHeading(rawName)}</h2><p class="lead" style="margin-top:8px">${mine.length ? `${mine.length} ${plural(mine.length, "face", "faces")}${isAuthor(chain, who) ? ", the treasury" : ""}.` : "No faces yet."}${handle.toLowerCase() !== who.toLowerCase() ? ` <span class="small">${shortAddr(who)}</span>` : ""}</p></div>
+${factList}
 ${whoBlock(chain, status)}
 ${rows.length ? `${sizePicker()}\n<div>${rows.join("\n")}</div>` : `<p>No faces here yet. <a href="/">Roll one</a> today.</p>`}
 <nav class="nav small" style="padding-top:20px;border-top:1px solid var(--line)" aria-label="Wallet links"><a href="${explorer(chain.chainId)}/address/${who}">Basescan</a><a href="${chain.chainId === 8453 ? `https://opensea.io/${who}` : `https://testnets.opensea.io/${who}`}">OpenSea</a><a href="/api/holder/${who}">JSON</a><a href="https://${PARENT}/wallet/${who}">This wallet on ${PARENT}</a></nav>
