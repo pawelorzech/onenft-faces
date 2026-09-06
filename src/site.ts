@@ -613,7 +613,7 @@ async function resume(){
     lock(true);if(r.stage==='sent'){show('Transaction sent. Waiting for confirmation.',r.hash);waitCommit(account,r.hash)}else{show('Your roll is committed. Waiting for the reveal.',r.hash);revealLoop(account,r.hash)}}catch(e){}
 }
 if(eth&&eth.on){eth.on('accountsChanged',function(accs){var a=accs&&accs[0]||null;if(account&&(!a||a.toLowerCase()!==account.toLowerCase())){if(locked){say('The wallet account changed. The roll in progress belongs to the previous account; switch back to follow it.')}account=a;if(!locked&&a){var r=rec(a);if(r&&r.epoch===CFG.epoch){resume()}}}});
-  eth.on('chainChanged',function(){say('The wallet switched network. Switch back to '+CFG.name+' to roll.')})}
+  eth.on('chainChanged',function(id){if(parseInt(id,16)===parseInt(CFG.chainHex,16))return;say('The wallet switched network. Switch back to '+CFG.name+' to roll.')})}
 btn.addEventListener('click',async function(){
   if(!eth||!eth.request){say('No wallet detected. Open this site in your wallet\\u2019s browser, or install one like Rabby, MetaMask or Coinbase Wallet.');return}
   lock(true);
