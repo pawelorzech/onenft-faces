@@ -54,6 +54,10 @@ export function openseaCollection(chain: ChainState): string {
 export function opensea(chain: ChainState, id: number): string {
   return chain.chainId === 8453 ? `https://opensea.io/assets/base/${chain.address}/${id}` : `https://testnets.opensea.io/assets/base_sepolia/${chain.address}/${id}`;
 }
+/** Contract page on OnChainChecker, which scored token 1 "Fully On-Chain" (5 of 5) on 2026-09-07. */
+export function onChainChecker(chain: ChainState): string {
+  return `https://onchainchecker.xyz/collection/${chain.chainId === 8453 ? "base" : "base-sepolia"}/${chain.address}/1`;
+}
 export function explorer(chainId: number): string {
   return chainId === 8453 ? "https://basescan.org" : "https://sepolia.basescan.org";
 }
@@ -813,9 +817,10 @@ ${keep}</div>
 <div class="galleries">${galleries()}</div>
 </section>
 ${counts}
+<p class="small" style="line-height:1.7">The image and its rules live in the contract. This site only shows them.${chain ? `<br>Contract <a href="${explorer(chain.chainId)}/address/${chain.address}">${shortAddr(chain.address)}</a> on ${chainName(chain.chainId)}. Every face pins its renderer, so a rolled face keeps its image. <a href="${openseaCollection(chain)}">Collection on OpenSea</a>. <a href="${onChainChecker(chain)}">Fully on-chain, 5 of 5 on OnChainChecker</a>.` : ""}</p>
 <nav class="sitenav small" aria-label="Site">${menu()}</nav>
 ${rows.length ? rows.join("\n") : chain ? `<p class="lead" style="padding:34px">Nobody has rolled yet. The first face is yours to make.</p>` : ""}
-<footer><span>This is not an investment and never will be. Images are CC0. One of the collections at <a href="https://${PARENT}">${PARENT}</a>.</span><nav aria-label="Footer">${menu([[`https://${PARENT}`, "All collections"]])}${chain ? `<a href="${openseaCollection(chain)}">OpenSea</a><a href="${explorer(chain.chainId)}/address/${chain.address}">Basescan</a>` : ""}<a href="${REPO}">Code</a></nav></footer>
+<footer><span>This is not an investment and never will be. Images are CC0. One of the collections at <a href="https://${PARENT}">${PARENT}</a>.</span><nav aria-label="Footer">${menu([[`https://${PARENT}`, "All collections"]])}${chain ? `<a href="${openseaCollection(chain)}">OpenSea</a><a href="${explorer(chain.chainId)}/address/${chain.address}">Basescan</a>` : ""}<a href="${REPO}">Code</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></nav></footer>
 </main>
 </div>
 ${builderScript(chain)}
@@ -907,4 +912,42 @@ export function goTarget(who: string | null, base = "/", back = "/yours"): strin
   const w = (who ?? "").trim();
   if (/^0x[0-9a-fA-F]{40}$/.test(w) || /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.eth$/i.test(w)) return base + w;
   return `${back}?bad=${encodeURIComponent(w.slice(0, 80))}`;
+}
+
+// ---- terms and privacy ----
+
+export const LEGAL_UPDATED = "2026-09-07";
+
+/** /terms and /privacy: short, plain, true. The family text, with this contract's facts. */
+export function legalPage(kind: "terms" | "privacy", chain: ChainState | null, epoch: number): string {
+  const p = groundOf(pageTraits(chain, epoch));
+  const contact = `<p>Questions go to <a href="${REPO}/issues">the repository</a> or to <a href="https://x.com/onenftclick">@onenftclick</a>.</p>`;
+  const terms = `<main class="prose" id="main">
+${topBar("Terms")}
+<h2 class="syne">Terms of use</h2>
+<p class="small">Last changed ${LEGAL_UPDATED}.</p>
+<p><strong>What this is.</strong> This site shows tokens that a contract on the Base chain mints and draws. The site reads the chain and nothing else. It holds no keys, no funds and no account of yours.</p>
+<p><strong>What you sign, you send.</strong> A roll takes two steps. You sign the commit, which spends your day, fixes your pins and pays the pin fee. The reveal comes from two blocks later, and anyone may send it; the site's keeper sends it for you, so you sign once. You can also reveal from your own wallet. You pay the network gas of what you sign. A transaction that fails still costs gas. Any fee the contract takes is written on this site before you sign.</p>
+<p><strong>The contract is the product.</strong> Every wallet may roll one face per UTC day. A roll without pins costs gas and nothing more. A pin costs ${ethOf(PIN_PRICES_WEI[1])} ETH, and each further pin doubles the total, up to ${ethOf(PIN_PRICES_WEI[MAX_PINS])} ETH for all ${MAX_PINS}; 95 percent of that fee goes to the author and 5 percent to the keeper wallet that pays the gas of reveals. The renderer is pinned per token, so a rolled face keeps its image for good. Supply stops at ${num(MAX_SUPPLY)} faces, counting commits not yet revealed. The contract has no pause and no way to take a token back.</p>
+<p><strong>No promise of value.</strong> This is not an investment and never will be. Nobody promises that a token will sell, or sell for more than the gas it cost. Nothing on this site is financial, legal or tax advice. Your taxes and the law where you live are yours to follow.</p>
+<p><strong>No warranty.</strong> The site can go offline, show stale data or have bugs. The tokens do not depend on it: the image comes from the contract. The site and the code come as they are, with no warranty of any kind.</p>
+<p><strong>Licence.</strong> Images and code are CC0. Use them for anything, with or without credit.</p>
+<p><strong>Changes.</strong> These terms can change. The date at the top says when they last did.</p>
+${contact}
+</main>`;
+  const privacy = `<main class="prose" id="main">
+${topBar("Privacy")}
+<h2 class="syne">Privacy</h2>
+<p class="small">Last changed ${LEGAL_UPDATED}.</p>
+<p><strong>No accounts, no cookies.</strong> This site has no sign-up, sets no cookies and runs no advertising. It does not sell data, because it keeps almost none.</p>
+<p><strong>Server logs.</strong> The host keeps standard access logs: address, path, time, browser string. They exist to keep the site running and to find faults, and they are not kept longer than that needs.</p>
+<p><strong>Page counts.</strong> The site may run Umami, a self-hosted counter that stores no cookie and does not follow you across sites. It counts pages, countries and browsers in aggregate.</p>
+<p><strong>Your wallet.</strong> When you connect a wallet, your browser hands the site your address so the page can show your faces and the roll button. Your browser's local storage keeps that address, the pins you picked and a roll you have committed but not yet revealed, so the page finds them again; clear it there. Opening a wallet page sends that address to the server, which looks it up on the chain. Your address and every transaction are public on Base by design; this site does not make them more or less public.</p>
+<p><strong>Third parties.</strong> Fonts load from Google Fonts. Chain reads go through a Base RPC provider. Links lead to OpenSea, Basescan, OnChainChecker and GitHub, which have their own rules.</p>
+<p><strong>Changes.</strong> This page can change. The date at the top says when it last did.</p>
+${contact}
+</main>`;
+  const body = kind === "terms" ? terms : privacy;
+  const title = kind === "terms" ? "Terms" : "Privacy";
+  return layout(`${title} | ${SITE}`, p, body, "/today.png", `/${kind}`);
 }

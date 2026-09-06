@@ -2,7 +2,7 @@ import { mintPage } from "./mint-page.ts";
 import { SLOTS } from "./sprites.ts";
 import { svgOf, itemSvg, skinSvg, hairColourSvg, groundSvg, topColourSvg, accentSvg, previewSvg, unpackPins, faceOfDay, pinKeyOk, SKINS, HAIRS, GROUNDS, TOPCOLORS, ACCENTS } from "./faces.ts";
 import { chainState, chainStatus, contractEnabled, readNow, startRollScan, CONTRACT, CHAIN_ID, EPOCH_SECONDS, type ChainState } from "./contract.ts";
-import { homePage, facePage, howPage, notFound, chainDown, traitsOfRecord, goTarget } from "./site.ts";
+import { homePage, facePage, howPage, legalPage, notFound, chainDown, traitsOfRecord, goTarget } from "./site.ts";
 import { rarityPage, onesPage, holderPage, yoursPage, assetsPage } from "./pages.ts";
 import { faceJson, stateJson, holderJson, specJson, rollJson } from "./api.ts";
 import { cardPng, squarePng } from "./image.ts";
@@ -107,6 +107,7 @@ async function route(url: URL, req: Request): Promise<Response> {
 
   if (path === "/") return html(homePage(chain, epoch, await namesFor(chain, chain ? recentOwners(chain) : undefined), status));
   if (path === "/how") return html(howPage(chain, epoch));
+  if (path === "/terms" || path === "/privacy") return html(legalPage(path.slice(1) as "terms" | "privacy", chain, epoch));
   if (path === "/rarity") return html(rarityPage(chain, epoch));
   if (path === "/ones") {
     const snapshot = chain;

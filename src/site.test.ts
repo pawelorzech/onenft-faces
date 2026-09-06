@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { homePage, facePage, howPage, notFound, goTarget, ethOf, pinRule, cssVars, contrast, heldBy, rolledBy } from "./site.ts";
+import { homePage, facePage, howPage, legalPage, notFound, goTarget, ethOf, pinRule, cssVars, contrast, heldBy, rolledBy } from "./site.ts";
 import { rarityPage, onesPage, assetsPage, holderPage, yoursPage } from "./pages.ts";
 import { specJson, stateJson, rollJson } from "./api.ts";
 import { previewSvg, itemSvg, unpackPins, PIN_PRICES_WEI, MAX_PINS, GROUNDS } from "./faces.ts";
@@ -200,4 +200,21 @@ test("face page distinguishes old ownership from a newly read collection summary
   expect(html).toContain('datetime="2026-01-01T01:02:03.000Z"');
   expect(html).toContain("Ownership may have changed.");
   expect(html).toContain('/' + A + '?refresh=1');
+});
+
+test("terms and privacy pages say what this contract does, and the home page links them", () => {
+  const t = legalPage("terms", fakeChain(), 20701);
+  expect(t).toContain("Terms of use");
+  expect(t).toContain("CC0");
+  expect(t).toContain("one face per UTC day");
+  expect(t).toContain(ethOf(PIN_PRICES_WEI[MAX_PINS]) + " ETH for all " + MAX_PINS);
+  const p = legalPage("privacy", null, 20701);
+  expect(p).toContain("No accounts, no cookies");
+  expect(p).toContain("local storage");
+  for (const f of [t, p]) expect(f).toContain("Last changed 2026-09-07");
+  const h = homePage(fakeChain(), 20701);
+  expect(h).toContain('href="/terms"');
+  expect(h).toContain('href="/privacy"');
+  expect(h).toContain("Fully on-chain, 5 of 5 on OnChainChecker");
+  expect(h).toContain("https://onchainchecker.xyz/collection/base-sepolia/0x3333333333333333333333333333333333333333/1");
 });
