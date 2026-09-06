@@ -183,3 +183,39 @@ test("past the 256-block window the keeper renews the commit instead of revealin
   expect(r2.state).toBe("sent");
   expect(w.sends.length).toBe(1);
 });
+
+test("treasury never overwrites yesterday's pending commit even if canRoll says true", async () => {
+  const { deps } = world({epoch:20702,lastRollEpoch:20701});
+  const original = deps.canRoll;
+  deps.canRoll = async who => ({...await original(who),canRoll:true});
+  let sends=0;deps.sendTreasuryCommit=async()=>{sends++;return "0x01";};
+  const k=new Keeper(deps);
+  await k.treasury({author:A,totalSupply:10,pending:1} as any);
+  expect(sends).toBe(0);
+});
+test("treasury rechecks in its serialized send queue and coalesces concurrent callers", async () => {
+  for(const appeared of [false,true]) {
+    const {deps}=world({revealBlock:0});let reads=0,sends=0;
+    deps.canRoll=async()=>({canRoll:true,lastRollEpoch:0,revealBlock:++reads>1&&appeared?101:0,lastRevealBlock:355,head:101,epoch:2,soldOut:false});
+    deps.sendTreasuryCommit=async()=>{sends++;return "0x01";};
+    const k=new Keeper(deps);
+    await Promise.all(Array.from({length:20},()=>k.treasury({author:A,totalSupply:10,pending:0} as any)));
+    expect(sends).toBe(appeared?0:1);
+  }
+});
+test("cycle prioritizes old reveals, tracks overdue commitments and reports count disagreement", async () => {
+  const {deps,w}=world({head:400,lastRevealBlock:355});
+  const events:string[]=[];
+  deps.sendRenew=async()=>{events.push("renew");return "0x01";};
+  deps.sendTreasuryCommit=async()=>{events.push("commit");return "0x02";};
+  const k=new Keeper(deps);
+  await k.cycle({author:A,totalSupply:10,pending:3} as any,[]);
+  expect(events).toEqual(["renew"]);
+  expect(k.summary()).toMatchObject({observedCommitments:1,expiredCommitments:1,pendingGap:2,oldestOverdueBlocks:299});
+});
+test("an old renew with a known unresolved transaction is not sent again", async()=>{
+  const {deps,w}=world({head:400,lastRevealBlock:355});const k=new Keeper(deps,{unknownAfterMs:1000});
+  await k.revealFor(A);w.now+=5000;
+  expect((await k.revealFor(A)).state).toBe("unknown");
+  expect(w.renews.length).toBe(1);
+});

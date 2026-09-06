@@ -13,12 +13,13 @@
  */
 import { createWalletClient, http, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { forgetPendingWallet } from "./commit-log.ts";
 import { ABI, CONTRACT, chain, chainState, canRoll, unrevealed, publicClient, rolledTokenOf, tokenRolledBy, scrubError, type ChainState, type RollCheck } from "./contract.ts";
 
 /** Pure decision, so it can be tested without a chain. */
-export function shouldCommitTreasury(state: ChainState | null, authorCanRoll: boolean): boolean {
+export function shouldCommitTreasury(state: ChainState | null, authorCanRoll: boolean, revealBlock = 0): boolean {
   if (!state) return false;
-  return authorCanRoll && state.totalSupply + state.pending < 10000;
+  return authorCanRoll && revealBlock === 0 && state.totalSupply + state.pending < 10000;
 }
 export function revealDue(revealBlock: number, head: number): boolean {
   return revealBlock > 0 && head >= revealBlock;
@@ -82,6 +83,10 @@ export type KeeperOptions = {
 
 export class Keeper {
   readonly pending = new Map<string, Pending>();
+  private treasuryFlight: Promise<void> | null = null;
+  private readonly observed = new Map<string, RollCheck>();
+  private chainPending: number | null = null;
+  private observedAt: number | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   private readonly inflight = new Map<string, Promise<RevealResult>>();
   private readonly o: Required<KeeperOptions>;
@@ -115,6 +120,7 @@ export class Keeper {
     let check: RollCheck;
     try {
       check = await this.deps.canRoll(who);
+      this.observed.set(key, check);
     } catch (e) {
       return { state: "rpc-down", address: who, reason: scrubError(e) };
     }
@@ -145,12 +151,19 @@ export class Keeper {
       if (p?.kind === "renew") {
         const r = await this.receipt(p.hash);
         if (!r && this.deps.now() - p.sentAt < this.o.unknownAfterMs) return { ...base, state: "waiting", hash: p.hash, reason: "renewing the commit" };
+        if (!r) {
+          let known = true;
+          try { known = await this.deps.transactionKnown(p.hash); } catch {}
+          if (known) return { ...base, state: "unknown", hash: p.hash, reason: "renew transaction is still unresolved" };
+        }
+        if (r?.status === "success") return { ...base, state: "waiting", hash: p.hash, reason: "renew confirmed; waiting for the chain read" };
+        if (p.attempts >= this.o.maxAttempts) return { ...base, state: "failed", hash: p.hash, reason: "renew failed repeatedly; inspect its transaction" };
         this.pending.delete(key);
       }
       if (!send) return { ...base, state: "waiting", reason: "the window passed; the commit needs a renew" };
       try {
         const hash = await this.send(() => this.deps.sendRenew(who));
-        this.pending.set(key, { hash, sentAt: this.deps.now(), attempts: 1, kind: "renew" });
+        this.pending.set(key, { hash, sentAt: this.deps.now(), attempts: (p?.attempts ?? 0) + 1, kind: "renew" });
         this.deps.log(`keeper: renewed the commit of ${who}, tx ${hash}`);
         return { ...base, state: "waiting", hash, reason: "renewing the commit" };
       } catch (e) {
@@ -192,7 +205,6 @@ export class Keeper {
     try {
       const hash = await this.send(() => this.deps.sendReveal(who));
       this.pending.set(key, { hash, sentAt: this.deps.now(), attempts, kind: "reveal" });
-      unrevealed.delete(who);
       this.deps.log(`keeper: revealed for ${who}, tx ${hash}, attempt ${attempts}`);
       return { ...base, state: "sent", hash, sentAgo: 0 };
     } catch (e) {
@@ -210,7 +222,13 @@ export class Keeper {
   }
 
   /** The treasury's daily commit, at most one in flight, never while the last one is unsettled. */
-  async treasury(state: ChainState): Promise<void> {
+  treasury(state: ChainState): Promise<void> {
+    if (this.treasuryFlight) return this.treasuryFlight;
+    this.treasuryFlight = this.runTreasury(state).finally(() => { this.treasuryFlight = null; });
+    return this.treasuryFlight;
+  }
+
+  private async runTreasury(state: ChainState): Promise<void> {
     const p = this.pending.get("treasury");
     if (p) {
       const r = await this.receipt(p.hash);
@@ -224,9 +242,14 @@ export class Keeper {
     }
     let ok: RollCheck;
     try { ok = await this.deps.canRoll(state.author); } catch { return; }
-    if (!shouldCommitTreasury(state, ok.canRoll)) return;
+    if (!shouldCommitTreasury(state, ok.canRoll, ok.revealBlock) || ok.soldOut || this.pending.has(state.author.toLowerCase())) return;
     try {
-      const hash = await this.send(() => this.deps.sendTreasuryCommit());
+      const hash = await this.send(async () => {
+        const fresh = await this.deps.canRoll(state.author);
+        if (!shouldCommitTreasury(state, fresh.canRoll, fresh.revealBlock) || fresh.soldOut || this.pending.has(state.author.toLowerCase())) return null;
+        return this.deps.sendTreasuryCommit();
+      });
+      if (!hash) return;
       this.pending.set("treasury", { hash, sentAt: this.deps.now(), attempts: (p?.attempts ?? 0) + 1, kind: "commit" });
       unrevealed.add(state.author);
       this.deps.log(`keeper: treasury commit, tx ${hash}`);
@@ -235,9 +258,24 @@ export class Keeper {
     }
   }
 
+  /** Always settle known commitments, including the author across UTC days, before a new daily commit. */
+  async cycle(state: ChainState, wallets: Iterable<Address>): Promise<void> {
+    const addresses = new Map<string, Address>();
+    for (const who of [state.author, ...wallets, ...[...this.pending.keys()].filter(k => /^0x[0-9a-f]{40}$/.test(k)) as Address[]]) addresses.set(who.toLowerCase(), who);
+    for (const who of addresses.values()) {
+      const r = await this.revealFor(who);
+      if (r.state === "none" || r.state === "confirmed") { forgetPendingWallet(unrevealed, who); this.observed.delete(who.toLowerCase()); }
+    }
+    this.chainPending = state.pending;
+    this.observedAt = this.deps.now();
+    await this.treasury(state);
+  }
+
   /** What a status page may show: counts only, never hashes with keys. */
   summary() {
-    return { pending: this.pending.size, reveals: [...this.pending.values()].filter((p) => p.kind === "reveal").length };
+    const checks = [...this.observed.values()];
+    const outstanding = checks.filter(c => c.revealBlock > 0);
+    return { chainPending: this.chainPending, observedAt: this.observedAt, observedCommitments: outstanding.length, expiredCommitments: outstanding.filter(c => c.lastRevealBlock > 0 && c.head > c.lastRevealBlock).length, oldestOverdueBlocks: Math.max(0, ...outstanding.map(c => c.head - c.revealBlock)), pendingGap: this.chainPending === null ? null : this.chainPending - outstanding.length, pending: this.pending.size, reveals: [...this.pending.values()].filter((p) => p.kind === "reveal").length };
   }
 }
 
@@ -248,8 +286,8 @@ let keeperAddress: Address | null = null;
 export function activeKeeper(): Keeper | null {
   return keeper;
 }
-export function keeperInfo(): { armed: boolean; address: Address | null; pending: number } {
-  return { armed: Boolean(keeper), address: keeperAddress, pending: keeper?.pending.size ?? 0 };
+export function keeperInfo() {
+  return { armed: Boolean(keeper), address: keeperAddress, ...keeper?.summary(), pending: keeper?.pending.size ?? 0 };
 }
 
 /** The standing of a wallet's roll. With a keeper it may send the reveal; without one it only reports. Never throws. */
@@ -304,11 +342,7 @@ export function startAutoclaim(key: Hex, everyMs = 60_000): void {
     try {
       const st = await chainState();
       if (!st) return;
-      await k.treasury(st);
-      for (const who of [...unrevealed]) {
-        const r = await k.revealFor(who);
-        if (r.state === "none" || r.state === "confirmed") unrevealed.delete(who);
-      }
+      await k.cycle(st, unrevealed);
     } catch (e) {
       console.error("keeper:", scrubError(e));
     } finally {

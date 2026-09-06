@@ -1,3 +1,4 @@
+import { applyCommitEvents } from "./commit-log.ts";
 /**
  * Reads state from the OneNFT contract. Without CONTRACT_ADDRESS the site
  * runs as a plain renderer with no chain.
@@ -41,6 +42,7 @@ export const ABI = parseAbi([
   "function commitForTreasury()",
   "function reveal(address wallet) returns (uint256)",
 ]);
+export const COMMITS_SELECTOR = toFunctionSelector("function commits(address)");
 export const COMMIT_SELECTOR = toFunctionSelector("function commit(uint128 pins)");
 export const COMMITTED = parseAbiItem("event Committed(address indexed wallet, uint128 pins, uint256 blockNumber, uint256 paid)");
 export const ROLLED = parseAbiItem("event Rolled(uint256 indexed tokenId, address indexed to, uint64 seed, uint128 pins, uint8 one, uint256 paid)");
@@ -232,11 +234,9 @@ export type RollCheck = { canRoll: boolean; lastRollEpoch: number; revealBlock: 
 export async function canRoll(wallet: Address): Promise<RollCheck> {
   if (!client || !CONTRACT) throw new Error("no contract configured");
   const c = { address: CONTRACT, abi: ABI } as const;
-  const [[ok, last, rb, lrb, epoch, total, pending], head] = await Promise.all([
-    client.multicall({ contracts: [{ ...c, functionName: "canRoll", args: [wallet] }, { ...c, functionName: "lastRollEpoch", args: [wallet] }, { ...c, functionName: "revealBlockOf", args: [wallet] }, { ...c, functionName: "lastRevealBlockOf", args: [wallet] }, { ...c, functionName: "currentEpoch" }, { ...c, functionName: "totalSupply" }, { ...c, functionName: "pending" }], allowFailure: false }),
-    client.getBlockNumber(),
-  ]);
-  return { canRoll: ok, lastRollEpoch: Number(last), revealBlock: Number(rb), lastRevealBlock: Number(lrb), head: Number(head), epoch: Number(epoch), soldOut: Number(total) + Number(pending) >= MAX_SUPPLY };
+  const head = await client.getBlockNumber({ cacheTime: 0 });
+  const [ok, last, rb, lrb, epoch, total, pending] = await client.multicall({ blockNumber: head, contracts: [{ ...c, functionName: "canRoll", args: [wallet] }, { ...c, functionName: "lastRollEpoch", args: [wallet] }, { ...c, functionName: "revealBlockOf", args: [wallet] }, { ...c, functionName: "lastRevealBlockOf", args: [wallet] }, { ...c, functionName: "currentEpoch" }, { ...c, functionName: "totalSupply" }, { ...c, functionName: "pending" }], allowFailure: false });
+  return { canRoll: ok && Number(rb) === 0, lastRollEpoch: Number(last), revealBlock: Number(rb), lastRevealBlock: Number(lrb), head: Number(head), epoch: Number(epoch), soldOut: Number(total) + Number(pending) >= MAX_SUPPLY };
 }
 
 /** The token the Rolled event of a receipt minted for `wallet`, or null when the receipt carries none. */
@@ -280,13 +280,15 @@ export async function scanRolls(): Promise<void> {
     while (scanned < head) {
       const to = scanned + CHUNK > head ? head : scanned + CHUNK;
       const committed = await client.getLogs({ address: CONTRACT as Address, event: COMMITTED, fromBlock: scanned, toBlock: to });
-      for (const l of committed) unrevealed.add(l.args.wallet!);
       const logs = await client.getLogs({ address: CONTRACT as Address, event: ROLLED, fromBlock: scanned, toBlock: to });
       for (const l of logs) {
-        unrevealed.delete(l.args.to!);
         const block = await client.getBlock({ blockNumber: l.blockNumber });
         rolls.set(Number(l.args.tokenId), { id: Number(l.args.tokenId), to: l.args.to!, tx: l.transactionHash, block: l.blockNumber, at: Number(block.timestamp), paid: l.args.paid! });
       }
+      applyCommitEvents(unrevealed, [
+        ...committed.map(l => ({ wallet: l.args.wallet!, kind: "commit" as const, blockNumber: l.blockNumber, logIndex: l.logIndex })),
+        ...logs.map(l => ({ wallet: l.args.to!, kind: "reveal" as const, blockNumber: l.blockNumber, logIndex: l.logIndex })),
+      ]);
       scanned = to + 1n;
     }
     scannedOnce = true;

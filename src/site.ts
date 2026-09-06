@@ -1,3 +1,4 @@
+import { hasPendingCommit } from "./commit-guard.ts";
 import { walletError } from "./wallet-error.ts";
 /**
  * Page HTML. The page has no palette of its own: it wears the ground colour
@@ -11,7 +12,7 @@ import { walletError } from "./wallet-error.ts";
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
 import { SLOTS as FACE_SLOTS } from "./sprites.ts";
 import { traitsOf, svgOf, attributesOf, rarityOf, WEIGHTS, SKIN_WEIGHTS, groundOf, faceOfDay, unpackPins, pinOk, skinPinOk, SKINS, HAIRS, GROUNDS, TOPCOLORS, ACCENTS, PIN_KEYS, PIN_BYTES, MAX_PINS, PIN_PRICES_WEI, combinations, type Traits } from "./faces.ts";
-import { dataFreshness, COMMIT_SELECTOR, type ChainState, type ChainStatus, type FaceRecord } from "./contract.ts";
+import { dataFreshness, COMMIT_SELECTOR, COMMITS_SELECTOR, type ChainState, type ChainStatus, type FaceRecord } from "./contract.ts";
 
 export type Names = Map<string, string>;
 export const NO_NAMES: Names = new Map();
@@ -575,6 +576,7 @@ function builderScript(chain: ChainState | null): string {
     rpc: chain?.chainId === 8453 ? "https://mainnet.base.org" : "https://sepolia.base.org",
     explorer: chain ? explorer(chain.chainId) : "",
     selector: COMMIT_SELECTOR,
+    commitsSelector: COMMITS_SELECTOR,
     revealSelector: REVEAL_SELECTOR,
     prices: PIN_PRICES_WEI.map((p) => p.toString()),
     priceLabels: PIN_PRICES_WEI.map((p) => ethOf(p)),
@@ -588,6 +590,7 @@ var CFG=${cfg};var pins={};var btn=document.getElementById('roll');var out=docum
 var galleryButtons=document.querySelectorAll('.items button');
 var DRAFT='onenft_pins:'+(CFG.address||'none');var pricesTag=CFG.prices.join(',');
 ${walletError.toString()}
+${hasPendingCommit.toString()}
 function say(t){if(out)out.textContent=t}
 function link(h){return ' <a href="'+CFG.explorer+'/tx/'+h+'" target="_blank" rel="noopener">View transaction</a>'}
 function show(t,h){if(!out)return;out.textContent=t;if(h)out.insertAdjacentHTML('beforeend',link(h))}
@@ -652,7 +655,7 @@ async function revealLoop(from,commitHash){
     else if(s.state==='rpc-down'){say('Your roll is committed, but the reveal service is unavailable. Check again.');offerCheck(function(){revealLoop(from,commitHash)});return}
     await sleep(document.hidden?5000:2500);
   }
-  say('Your roll is committed. The reveal is taking long; your roll is safe. Check again in a minute.');offerCheck(function(){revealLoop(from,commitHash)});
+  say('Your roll is committed. The reveal is taking long; check its status before starting another. Check again in a minute.');offerCheck(function(){revealLoop(from,commitHash)});
 }
 async function manualReveal(from){
   var submitting=false;
@@ -668,10 +671,9 @@ async function manualReveal(from){
 async function resume(){
   if(!eth||!eth.request)return;
   try{var accs=await eth.request({method:'eth_accounts'});if(!accs||!accs.length)return;account=accs[0];var r=rec(account);if(!r)return;
-    if(r.epoch!==CFG.epoch){drop(account);return}
     lock(true);if(r.stage==='sent'){show('Transaction sent. Waiting for confirmation.',r.hash);waitCommit(account,r.hash)}else{show('Your roll is committed. Waiting for the reveal.',r.hash);revealLoop(account,r.hash)}}catch(e){}
 }
-if(eth&&eth.on){eth.on('accountsChanged',function(accs){var a=accs&&accs[0]||null;if(account&&(!a||a.toLowerCase()!==account.toLowerCase())){if(locked){say('The wallet account changed. The roll in progress belongs to the previous account; switch back to follow it.')}account=a;if(!locked&&a){var r=rec(a);if(r&&r.epoch===CFG.epoch){resume()}}}});
+if(eth&&eth.on){eth.on('accountsChanged',function(accs){var a=accs&&accs[0]||null;if(account&&(!a||a.toLowerCase()!==account.toLowerCase())){if(locked){say('The wallet account changed. The roll in progress belongs to the previous account; switch back to follow it.')}account=a;if(!locked&&a){var r=rec(a);if(r){resume()}}}});
   eth.on('chainChanged',function(id){if(parseInt(id,16)===parseInt(CFG.chainHex,16))return;say('The wallet switched network. Switch back to '+CFG.name+' to roll.')})}
 btn.addEventListener('click',async function(){
   var submitting=false;
@@ -680,7 +682,7 @@ btn.addEventListener('click',async function(){
   var snapPins=packed(),snapN=count(),snapWei=BigInt(CFG.prices[snapN]);
   try{
     var accs=await eth.request({method:'eth_requestAccounts'});if(!accs||!accs.length)throw new Error('the wallet gave no account');var from=accs[0];account=from;
-    var r=rec(from);if(r&&r.epoch===CFG.epoch){show('A roll from this wallet is already in progress.',r.hash);return r.stage==='sent'?waitCommit(from,r.hash):revealLoop(from,r.hash)}
+    var r=rec(from);if(r){show('A roll from this wallet is already in progress.',r.hash);return r.stage==='sent'?waitCommit(from,r.hash):revealLoop(from,r.hash)}
     try{await eth.request({method:'wallet_switchEthereumChain',params:[{chainId:CFG.chainHex}]})}
     catch(e){if(e&&e.code===4902){await eth.request({method:'wallet_addEthereumChain',params:[{chainId:CFG.chainHex,chainName:CFG.name,rpcUrls:[CFG.rpc],nativeCurrency:{name:'Ether',symbol:'ETH',decimals:18},blockExplorerUrls:[CFG.explorer]}]})}else{throw e}}
     var st=await status(from,false);
@@ -691,6 +693,7 @@ btn.addEventListener('click',async function(){
     say(snapN?'Confirm in your wallet: '+priceText(snapN)+' pin fee plus network gas, for '+snapN+(snapN===1?' pin.':' pins.'):'Confirm in your wallet. 0 ETH mint fee. You pay network gas.');
     var data=CFG.selector+snapPins.padStart(64,'0');
     var tx={from:from,to:CFG.address,data:data};if(snapWei>0n)tx.value='0x'+snapWei.toString(16);
+    if(await hasPendingCommit(eth,from,CFG.chainHex,CFG.address,CFG.commitsSelector)){say('Your previous roll must be revealed before starting another.');keepRec(from,{stage:'committed',hash:null,epoch:CFG.epoch});return revealLoop(from,null)}
     submitting=true;var hash=await eth.request({method:'eth_sendTransaction',params:[tx]});
     keepRec(from,{stage:'sent',hash:hash,epoch:CFG.epoch,pins:snapPins});show('Transaction sent. Waiting for confirmation.',hash);
     await waitCommit(from,hash);
