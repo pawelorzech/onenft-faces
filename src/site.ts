@@ -8,7 +8,8 @@
  * and every number about pins and prices comes from faces.ts, not from prose.
  */
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
-import { traitsOf, svgOf, attributesOf, rarityOf, groundOf, faceOfDay, unpackPins, pinOk, skinPinOk, SKINS, HAIRS, GROUNDS, TOPCOLORS, ACCENTS, PIN_KEYS, PIN_BYTES, MAX_PINS, PIN_PRICES_WEI, combinations, type Traits } from "./faces.ts";
+import { SLOTS as FACE_SLOTS } from "./sprites.ts";
+import { traitsOf, svgOf, attributesOf, rarityOf, WEIGHTS, SKIN_WEIGHTS, groundOf, faceOfDay, unpackPins, pinOk, skinPinOk, SKINS, HAIRS, GROUNDS, TOPCOLORS, ACCENTS, PIN_KEYS, PIN_BYTES, MAX_PINS, PIN_PRICES_WEI, combinations, type Traits } from "./faces.ts";
 import { COMMIT_SELECTOR, type ChainState, type ChainStatus, type FaceRecord } from "./contract.ts";
 
 export type Names = Map<string, string>;
@@ -223,6 +224,11 @@ button.cta[disabled]{opacity:.55;cursor:default}
 .sitenav{display:flex;gap:4px 22px;flex-wrap:wrap;padding:6px 34px;border-bottom:1px solid var(--line)}
 footer{padding:26px 34px;display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;color:var(--muted);font-size:16px}
 footer nav,.nav{display:flex;gap:6px 20px;flex-wrap:wrap}
+.head{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.step{display:flex;gap:2px}
+.step a{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;font-size:22px;line-height:1;color:var(--muted);text-decoration:none;box-shadow:0 0 0 1px var(--line)}
+.step a:hover{color:var(--fg);background:var(--soft)}
+.step .gone{display:inline-flex;min-width:44px;min-height:44px;box-shadow:0 0 0 1px var(--line);opacity:.35}
 footer nav a,.nav a,.top nav a,.sitenav a{display:inline-flex;align-items:center;min-height:44px}
 .prose{max-width:680px;padding:38px 34px;display:flex;flex-direction:column;gap:22px}
 .prose h2{margin-top:22px}
@@ -233,7 +239,7 @@ footer nav a,.nav a,.top nav a,.sitenav a{display:inline-flex;align-items:center
 .single .face{width:100%;max-width:512px;aspect-ratio:1;box-shadow:0 0 0 1px var(--line)}
 .single .face svg{display:block;width:100%;height:100%}
 .num{font-weight:800;font-size:62px;line-height:.95;letter-spacing:-.03em}
-.top{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+.top{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
 .top nav{display:flex;gap:4px 18px;flex-wrap:wrap;font-size:16px;color:var(--muted)}
 .wide{padding:38px 34px;display:flex;flex-direction:column;gap:28px;max-width:1180px}
 .wide p{margin:0}
@@ -251,6 +257,7 @@ table.tr td img{width:40px;height:40px;vertical-align:middle;margin-right:8px;bo
 .traits{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;font-size:16px;max-width:460px}
 .traits dt{color:var(--muted);margin:0}
 .traits dd{margin:0}
+.traits .odds{color:var(--muted);font-size:14px}
 .share{display:flex;gap:16px;flex-wrap:wrap;font-size:15px}
 pre.snip{margin:0;padding:14px;background:var(--soft);overflow-x:auto;font-size:13px;line-height:1.5;font-family:ui-monospace,Menlo,monospace}
 .crumb{margin:0}
@@ -259,7 +266,7 @@ pre.snip{margin:0;padding:14px;background:var(--soft);overflow-x:auto;font-size:
 .crumb a,.crumb span[aria-current]{display:inline-flex;align-items:center;min-height:44px}
 .crumb .hub{color:var(--muted)}
 .crumb .sep{color:var(--line);font-weight:800;font-size:20px}
-.crumb span[aria-current]{color:var(--muted);font-size:16px}
+.crumb span[aria-current]{color:var(--muted);font-size:16px;font-family:"Syne",system-ui,sans-serif;font-weight:700}
 @media (min-width:901px){
  aside .crumb ol,aside .crumb li{flex-direction:column;gap:2px;align-items:flex-start}
  aside .crumb .sep{display:none}
@@ -379,6 +386,10 @@ export function topBar(current?: string): string {
 }
 
 /** The countdown to midnight UTC. Counts from the clock, recomputes when the tab comes back, never reloads: a reload would drop a roll in flight and the pins. */
+/** Left and right arrow keys walk to the neighbouring token; typing in a field is left alone. */
+export const STEP_KEYS = `<script>
+(function(){document.addEventListener('keydown',function(e){if(e.altKey||e.ctrlKey||e.metaKey||e.shiftKey)return;var t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable))return;var a=e.key==='ArrowLeft'?document.querySelector('a[rel=prev]'):e.key==='ArrowRight'?document.querySelector('a[rel=next]'):null;if(a){e.preventDefault();location.href=a.href}})})();
+</script>`;
 export const COUNTDOWN = `<script>
 (function(){var el=document.querySelector('[data-left]');if(!el)return;var s=+el.getAttribute('data-left');var t0=Date.now();var told=false;
 function f(x){var h=Math.floor(x/3600),m=Math.floor(x%3600/60);return h?h+' h '+m+' min':m+' min'}
@@ -406,10 +417,45 @@ export function staleNote(status: ChainStatus | null | undefined): string {
 export function tierTag(tier: string): string {
   return tier === "common" ? "" : `<span class="tag ${tier}">${tier}</span>`;
 }
-/** The traits of a face as a definition list, with tiers. */
+/** The odds of one drawn part, in percent, as the weight tables give them: per ten thousand for layers and skin, even for colours. */
+export function oddsOf(t: Traits): Map<string, number> {
+  const m = new Map<string, number>();
+  if (t.one !== undefined) return m;
+  FACE_SLOTS.forEach((s, k) => m.set(s.trait, WEIGHTS[k][t.items[k]] / 100));
+  m.set("Skin", SKIN_WEIGHTS[t.skin] / 100);
+  m.set("Hair colour", 100 / HAIRS.length);
+  m.set("Top colour", 100 / TOPCOLORS.length);
+  m.set("Ground", 100 / GROUNDS.length);
+  m.set("Accent", 100 / ACCENTS.length);
+  return m;
+}
+export const pctOf = (p: number) => (p >= 10 ? p.toFixed(0) : p >= 1 ? p.toFixed(1) : p.toFixed(2)) + "%";
+/** "1 in 2,400,000": the seven layers and the skin together. Colours are left out, they are even. */
+export function oneInOf(t: Traits): string | null {
+  if (t.one !== undefined) return null;
+  let p = 1;
+  FACE_SLOTS.forEach((s, k) => { p *= WEIGHTS[k][t.items[k]] / 10000; });
+  p *= SKIN_WEIGHTS[t.skin] / 10000;
+  return `1 in ${num(Math.round(1 / p))}`;
+}
+/** The part with the lowest odds, named with its slot: "Grid (background, 2.3%)". */
+export function rarestOf(t: Traits): string | null {
+  if (t.one !== undefined) return null;
+  const parts: { name: string; slot: string; p: number }[] = FACE_SLOTS.map((s, k) => ({ name: s.items[t.items[k]].name, slot: s.trait.toLowerCase(), p: WEIGHTS[k][t.items[k]] / 100 }));
+  parts.push({ name: SKINS[t.skin].name, slot: "skin", p: SKIN_WEIGHTS[t.skin] / 100 });
+  const best = parts.reduce((a, b) => (b.p < a.p ? b : a));
+  return `${best.name} (${best.slot}, ${pctOf(best.p)})`;
+}
+/** The traits of a face as a definition list, with tiers and the odds of each part. */
 export function traitList(t: Traits): string {
-  const rows = attributesOf(t).map((a) => `<dt>${esc(a.trait_type.toLowerCase())}</dt><dd>${esc(a.value)}${a.tier ? tierTag(a.tier) : ""}</dd>`);
-  rows.push(`<dt>rarity</dt><dd>${rarityOf(t)}</dd>`);
+  const odds = oddsOf(t);
+  const rows = attributesOf(t).map((a) => {
+    const o = odds.get(a.trait_type);
+    return `<dt>${esc(a.trait_type.toLowerCase())}</dt><dd>${esc(a.value)}${a.tier ? tierTag(a.tier) : ""}${o !== undefined ? ` <span class="odds">${pctOf(o)}</span>` : ""}</dd>`;
+  });
+  const one = oneInOf(t);
+  const rarest = rarestOf(t);
+  rows.push(`<dt>rarity</dt><dd>${rarityOf(t)}${rarest ? `, rarest part ${esc(rarest)}` : ""}${one ? `<br><span class="odds">these layers and skin together: ${one} rolls</span>` : ""}</dd>`);
   return `<dl class="traits">${rows.join("")}</dl>`;
 }
 
@@ -783,18 +829,19 @@ export function facePage(id: number, f: FaceRecord, chain: ChainState, names: Na
 ${topBar(`Face #${id}`)}
 ${staleNote(status)}
 <div class="face px">${stripSize(svgOf(t))}</div>
-<div><h2 class="num syne" style="margin:0">#${id}</h2><p class="lead">${held || "holder unknown"}${pinsN ? `, ${pinsN} ${plural(pinsN, "pin", "pins")} (${Object.keys(pins).map((k) => esc(GALLERY_LABELS[k]?.toLowerCase() ?? k)).join(", ")})` : ", no pins"}${f.one !== 255 ? ", one of one" : ""}</p></div>
+<div><div class="head"><h2 class="num syne" style="margin:0">#${id}</h2><nav class="step" aria-label="Neighbouring faces">${id > 1 ? `<a rel="prev" href="/face/${id - 1}" aria-label="Face #${id - 1}" title="Face #${id - 1}, left arrow key">&larr;</a>` : `<span class="gone" aria-hidden="true"></span>`}${id < chain.totalSupply ? `<a rel="next" href="/face/${id + 1}" aria-label="Face #${id + 1}" title="Face #${id + 1}, right arrow key">&rarr;</a>` : `<span class="gone" aria-hidden="true"></span>`}</nav></div><p class="lead">${held || "holder unknown"}${pinsN ? `, ${pinsN} ${plural(pinsN, "pin", "pins")} (${Object.keys(pins).map((k) => esc(GALLERY_LABELS[k]?.toLowerCase() ?? k)).join(", ")})` : ", no pins"}${f.one !== 255 ? ", one of one" : ""}</p></div>
 ${roll ? `<p class="small">${rolled ? rolled[0].toUpperCase() + rolled.slice(1) : "Rolled"} on ${dateOf(Math.floor(roll.at / 86400))}${roll.paid ? `, pin fee ${eth(roll.paid)}` : ""}, <a href="${explorer(chain.chainId)}/tx/${roll.tx}">transaction</a>.</p>` : ""}
 ${f.one !== 255 ? `<p class="small">A one of one is a full drawing. It kept the pinned background and ground colour, if any, and replaced every other pin.</p>` : ""}
 ${traitList(t)}
 <p class="small" style="line-height:1.7">Seed ${f.seed.toString()}. Token ${id} of <a href="${explorer(chain.chainId)}/address/${chain.address}">${shortAddr(chain.address)}</a> on ${chainName(chain.chainId)}. The image and its rules live in the contract.</p>
 ${downloadBar(id, p.bg)}
-<nav class="nav" aria-label="Faces">${id > 1 ? `<a href="/face/${id - 1}">previous</a>` : ""}${id < chain.totalSupply ? `<a href="/face/${id + 1}">next</a>` : ""}<a href="/">roll yours</a></nav>
+<nav class="nav" aria-label="Faces"><a href="/">roll yours</a></nav>
 <nav class="nav small" aria-label="Links"><a href="${opensea(chain, id)}">OpenSea</a><a href="${explorer(chain.chainId)}/nft/${chain.address}/${id}">Basescan</a><a href="/face/${id}.png${IMG_Q}">Link card</a><a href="/api/face/${id}">JSON</a></nav>
 <nav class="share" aria-label="Share"><a href="https://warpcast.com/~/compose?text=${text}&embeds[]=${encodeURIComponent(url)}">Share on Farcaster</a><a href="https://x.com/intent/post?text=${text}&url=${encodeURIComponent(url)}">Share on X</a></nav>
 <details><summary class="small">Put this face on your page</summary><pre class="snip">${snippet}</pre><p class="small">CC0. No credit needed.</p></details>
 </main>
-${downloadScript()}`;
+${downloadScript()}
+${STEP_KEYS}`;
   return layout(`Face #${id} | ${SITE}`, p, body, `/face/${id}.png${IMG_Q}`, `/face/${id}`, `Face #${id} of ${SITE}: ${rarityOf(t)}, ${attributesOf(t).slice(0, 5).map((a) => a.value).join(", ")}${pinsN ? `, ${pinsN} ${plural(pinsN, "pin", "pins")}` : ""}${f.one !== 255 ? ", one of one" : ""}. ${heldBy(chain, id, names) || "Rolled on chain"}.`);
 }
 
