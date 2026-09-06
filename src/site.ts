@@ -1,3 +1,4 @@
+import { walletError } from "./wallet-error.ts";
 /**
  * Page HTML. The page has no palette of its own: it wears the ground colour
  * of the newest face, or of the face of the day before anyone has rolled.
@@ -486,6 +487,7 @@ export function connectScript(base = "/", entry = false): string {
   return `<script>
 (function(){
 var BASE=${JSON.stringify(base)};var ENTRY=${entry ? "true" : "false"};var KEY='onenft_who';var btn=document.getElementById('connect');var out=document.getElementById('msg');var last=document.getElementById('last');
+${walletError.toString()}
 function say(t){if(out)out.textContent=t}
 function here(a){return location.pathname.toLowerCase()===(BASE+a).toLowerCase()}
 function remember(a){try{localStorage.setItem(KEY,a)}catch(e){}}
@@ -497,9 +499,10 @@ if(!eth||!eth.request){btn.disabled=true;btn.textContent='No wallet detected';sa
 function known(accs){if(!accs||!accs.length){btn.textContent='Connect wallet';btn.onclick=null;btn.disabled=false;return}var a=accs[0];remember(a);if(here(a)){btn.textContent='This is your wallet';btn.disabled=true;return}if(ENTRY){location.replace(BASE+a);return}btn.textContent='Your wallet';btn.disabled=false;btn.onclick=function(){location.href=BASE+a};offer(a,'Connected')}
 eth.request({method:'eth_accounts'}).then(known).catch(function(){});
 if(eth.on){eth.on('accountsChanged',known);eth.on('disconnect',function(){known([])})}
-btn.addEventListener('click',async function(){if(btn.onclick)return;btn.disabled=true;
+btn.addEventListener('click',async function(){
+  var submitting=false;if(btn.onclick)return;btn.disabled=true;
   try{var accs=await eth.request({method:'eth_requestAccounts'});if(!accs||!accs.length)throw new Error('the wallet gave no account');var acc=accs[0];remember(acc);location.href=BASE+acc}
-  catch(e){say(e&&e.code===4001?'Cancelled in the wallet.':e&&e.code===-32002?'The wallet is already asking. Open it to answer.':'Failed: '+((e&&e.message)||e));btn.disabled=false}});
+  catch(e){say(walletError(e,typeof submitting!=='undefined'&&submitting));btn.disabled=false}});
 })();
 </script>`;
 }
@@ -580,6 +583,7 @@ function builderScript(chain: ChainState | null): string {
 var CFG=${cfg};var pins={};var btn=document.getElementById('roll');var out=document.getElementById('msg');var prev=document.getElementById('preview');var price=document.getElementById('price');var keep=document.getElementById('keep');var clear=document.getElementById('clear');var sum=document.getElementById('sum');var check=document.getElementById('check');var manual=document.getElementById('manual');var fee=document.getElementById('fee');
 var galleryButtons=document.querySelectorAll('.items button');
 var DRAFT='onenft_pins:'+(CFG.address||'none');var pricesTag=CFG.prices.join(',');
+${walletError.toString()}
 function say(t){if(out)out.textContent=t}
 function link(h){return ' <a href="'+CFG.explorer+'/tx/'+h+'" target="_blank" rel="noopener">View transaction</a>'}
 function show(t,h){if(!out)return;out.textContent=t;if(h)out.insertAdjacentHTML('beforeend',link(h))}
@@ -647,14 +651,15 @@ async function revealLoop(from,commitHash){
   say('Your roll is committed. The reveal is taking long; your roll is safe. Check again in a minute.');offerCheck(function(){revealLoop(from,commitHash)});
 }
 async function manualReveal(from){
+  var submitting=false;
   manual.hidden=true;
   try{
     say('Confirm the reveal in your wallet. You pay network gas.');
-    var hash=await eth.request({method:'eth_sendTransaction',params:[{from:from,to:CFG.address,data:CFG.revealSelector+from.slice(2).toLowerCase().padStart(64,'0')}]});
+    submitting=true;var hash=await eth.request({method:'eth_sendTransaction',params:[{from:from,to:CFG.address,data:CFG.revealSelector+from.slice(2).toLowerCase().padStart(64,'0')}]});
     show('Reveal sent. Waiting for confirmation.',hash);
     for(var i=0;i<45;i++){var r=await receipt(hash);if(r){if(r.status==='0x1'){var s=await status(from,false);if(s.tokenId)return done(s.tokenId);say('Revealed. Finding your face.');return revealLoop(from,null)}show('The network rejected the reveal. It may have been revealed already. Checking.',hash);return revealLoop(from,null)}await sleep(2500)}
     show('We cannot confirm the reveal yet. Check its status before trying again.',hash);offerCheck(function(){revealLoop(from,null)});
-  }catch(e){say(e&&e.code===4001?'Cancelled in the wallet. Your roll is still committed.':'Failed: '+((e&&e.message)||e));manual.hidden=false}
+  }catch(e){say(walletError(e,submitting)+' Your roll remains committed; check its reveal status.');manual.hidden=false}
 }
 async function resume(){
   if(!eth||!eth.request)return;
@@ -665,6 +670,7 @@ async function resume(){
 if(eth&&eth.on){eth.on('accountsChanged',function(accs){var a=accs&&accs[0]||null;if(account&&(!a||a.toLowerCase()!==account.toLowerCase())){if(locked){say('The wallet account changed. The roll in progress belongs to the previous account; switch back to follow it.')}account=a;if(!locked&&a){var r=rec(a);if(r&&r.epoch===CFG.epoch){resume()}}}});
   eth.on('chainChanged',function(id){if(parseInt(id,16)===parseInt(CFG.chainHex,16))return;say('The wallet switched network. Switch back to '+CFG.name+' to roll.')})}
 btn.addEventListener('click',async function(){
+  var submitting=false;
   if(!eth||!eth.request){say('No wallet detected. Open this site in your wallet\\u2019s browser, or install one like Rabby, MetaMask or Coinbase Wallet.');return}
   lock(true);
   var snapPins=packed(),snapN=count(),snapWei=BigInt(CFG.prices[snapN]);
@@ -681,10 +687,10 @@ btn.addEventListener('click',async function(){
     say(snapN?'Confirm in your wallet: '+priceText(snapN)+' pin fee plus network gas, for '+snapN+(snapN===1?' pin.':' pins.'):'Confirm in your wallet. 0 ETH mint fee. You pay network gas.');
     var data=CFG.selector+snapPins.padStart(64,'0');
     var tx={from:from,to:CFG.address,data:data};if(snapWei>0n)tx.value='0x'+snapWei.toString(16);
-    var hash=await eth.request({method:'eth_sendTransaction',params:[tx]});
+    submitting=true;var hash=await eth.request({method:'eth_sendTransaction',params:[tx]});
     keepRec(from,{stage:'sent',hash:hash,epoch:CFG.epoch,pins:snapPins});show('Transaction sent. Waiting for confirmation.',hash);
     await waitCommit(from,hash);
-  }catch(e){say(e&&e.code===4001?'Cancelled in the wallet. Nothing was sent.':e&&e.code===-32002?'The wallet is already asking. Open it to answer.':'Failed: '+((e&&e.message)||e));lock(false);update()}
+  }catch(e){say(walletError(e,submitting));lock(false);update()}
 });
 resume();
 })();
