@@ -2,7 +2,7 @@
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
 import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, attributesOf, rarityOf, unpackPins, PIN_PRICES_WEI, PIN_KEYS, MAX_PINS, TIER_WEIGHT } from "./faces.ts";
 import { SITE, traitsOfRecord, isAuthor, opensea, explorer, MAX_SUPPLY, pinRule, ethOf, type Names, NO_NAMES, IMG_Q } from "./site.ts";
-import { unrevealed, type ChainState, type ChainStatus, type FaceRecord } from "./contract.ts";
+import { unrevealed, dataFreshness, type ChainState, type ChainStatus, type FaceRecord } from "./contract.ts";
 import type { RevealResult } from "./autoclaim.ts";
 import type { Address } from "viem";
 import { holderFacts } from "./facts.ts";
@@ -19,6 +19,7 @@ export function faceJson(f: FaceRecord, chain: ChainState, names: Names = NO_NAM
   const roll = chain.rolls.get(f.id);
   return {
     id: f.id,
+    data: dataFreshness(chain, f.id),
     seed: f.seed.toString(),
     pins: unpackPins(f.pins),
     oneOfOne: f.one === 255 ? null : ONE_OF_ONES[f.one].name,
@@ -64,7 +65,7 @@ export function stateJson(chain: ChainState | null, names: Names = NO_NAMES, sta
 
 export function holderJson(who: Address, chain: ChainState, names: Names = NO_NAMES, status: ChainStatus | null = null) {
   const mine = [...chain.owners].filter(([, o]) => o.toLowerCase() === who.toLowerCase()).map(([id]) => id).sort((a, b) => a - b);
-  return { address: who, name: names.get(who.toLowerCase()) ?? null, treasury: isAuthor(chain, who), count: mine.length, chain: chainBlock(status), facts: holderFacts(who, chain), faces: mine.map((id) => faceJson(chain.faces.get(id)!, chain, names, status)) };
+  return { address: who, data: dataFreshness(chain), name: names.get(who.toLowerCase()) ?? null, treasury: isAuthor(chain, who), count: mine.length, chain: chainBlock(status), facts: holderFacts(who, chain), faces: mine.map((id) => faceJson(chain.faces.get(id)!, chain, names, status)) };
 }
 
 /** The standing of one wallet's roll, for the builder's polling. */

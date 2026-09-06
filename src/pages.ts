@@ -3,6 +3,7 @@ import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
 import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, svgOf, groundOf, pinOk, skinPinOk, combinations, rarityOf, unpackPins, BASE_TRAITS, type Traits } from "./faces.ts";
 import { SITE, REPO, PARENT, FILE_PREFIX, layout, topBar, esc, num, plural, label, isAuthor, tierTag, pageTraits, traitsOfRecord, stripSize, explorer, chainName, openseaCollection, opensea, shortAddr, MAX_SUPPLY, staleNote, whoBlock, sizePicker, downloadBar, connectScript, downloadScript, nameHeading, traitList, heldBy, rolledBy, dateOf, eth, type Names, NO_NAMES, IMG_Q } from "./site.ts";
 import type { ChainState, ChainStatus } from "./contract.ts";
+import { dataFreshness } from "./contract.ts";
 import type { Address } from "viem";
 import { holderFacts } from "./facts.ts";
 
@@ -92,6 +93,7 @@ ${downloadBar(id, g.bg)}
   const body = `<main class="wide" id="main">
 ${topBar(rawName)}
 ${staleNote(status)}
+<p class="small">All holdings checked at <time datetime="${dataFreshness(chain).readAt}">${dataFreshness(chain).readAt.replace("T", " ").replace(/\.\d+Z$/, " UTC")}</time>. Ownership may have changed. <a href="?refresh=1">Refresh holdings</a></p>
 <div><h2 class="syne">${nameHeading(rawName)}</h2><p class="lead" style="margin-top:8px">${mine.length ? `${mine.length} ${plural(mine.length, "face", "faces")}${isAuthor(chain, who) ? ", the treasury" : ""}.` : "No faces yet."}${handle.toLowerCase() !== who.toLowerCase() ? ` <span class="small">${shortAddr(who)}</span>` : ""}</p></div>
 ${factList}
 ${whoBlock(chain, status)}

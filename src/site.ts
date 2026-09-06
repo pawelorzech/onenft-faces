@@ -10,7 +10,7 @@
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
 import { SLOTS as FACE_SLOTS } from "./sprites.ts";
 import { traitsOf, svgOf, attributesOf, rarityOf, WEIGHTS, SKIN_WEIGHTS, groundOf, faceOfDay, unpackPins, pinOk, skinPinOk, SKINS, HAIRS, GROUNDS, TOPCOLORS, ACCENTS, PIN_KEYS, PIN_BYTES, MAX_PINS, PIN_PRICES_WEI, combinations, type Traits } from "./faces.ts";
-import { COMMIT_SELECTOR, type ChainState, type ChainStatus, type FaceRecord } from "./contract.ts";
+import { dataFreshness, COMMIT_SELECTOR, type ChainState, type ChainStatus, type FaceRecord } from "./contract.ts";
 
 export type Names = Map<string, string>;
 export const NO_NAMES: Names = new Map();
@@ -825,6 +825,8 @@ export function facePage(id: number, f: FaceRecord, chain: ChainState, names: Na
   const pins = unpackPins(f.pins);
   const pinsN = Object.keys(pins).length;
   const held = heldBy(chain, id, names, true);
+  const ownership = dataFreshness(chain, id);
+  const owner = chain.owners.get(id);
   const rolled = rolledBy(chain, id, names, true);
   const url = `https://${SITE}/face/${id}`;
   const text = encodeURIComponent(`Face #${id} of ${SITE}`);
@@ -832,6 +834,7 @@ export function facePage(id: number, f: FaceRecord, chain: ChainState, names: Na
   const body = `<main class="single" id="main">
 ${topBar(`Face #${id}`)}
 ${staleNote(status)}
+<p class="small">Owner checked at <time datetime="${ownership.readAt}">${ownership.readAt.replace("T", " ").replace(/\.\d+Z$/, " UTC")}</time>.${ownership.stale ? " Ownership may have changed." : ""}${owner ? ` <a href="/${owner}?refresh=1">Refresh holdings</a>` : ""}</p>
 <div class="face px">${stripSize(svgOf(t))}</div>
 <div><div class="head"><h2 class="num syne" style="margin:0">#${id}</h2><nav class="step" aria-label="Neighbouring faces">${id > 1 ? `<a rel="prev" href="/face/${id - 1}" aria-label="Face #${id - 1}" title="Face #${id - 1}, left arrow key">&larr;</a>` : `<span class="gone" aria-hidden="true"></span>`}${id < chain.totalSupply ? `<a rel="next" href="/face/${id + 1}" aria-label="Face #${id + 1}" title="Face #${id + 1}, right arrow key">&rarr;</a>` : `<span class="gone" aria-hidden="true"></span>`}</nav></div><p class="lead">${held || "holder unknown"}${pinsN ? `, ${pinsN} ${plural(pinsN, "pin", "pins")} (${Object.keys(pins).map((k) => esc(GALLERY_LABELS[k]?.toLowerCase() ?? k)).join(", ")})` : ", no pins"}${f.one !== 255 ? ", one of one" : ""}</p></div>
 ${roll ? `<p class="small">${rolled ? rolled[0].toUpperCase() + rolled.slice(1) : "Rolled"} on ${dateOf(Math.floor(roll.at / 86400))}${roll.paid ? `, pin fee ${eth(roll.paid)}` : ""}, <a href="${explorer(chain.chainId)}/tx/${roll.tx}">transaction</a>.</p>` : ""}

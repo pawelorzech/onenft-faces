@@ -192,3 +192,12 @@ test("preview and item images are 32x32 svgs", () => {
   expect(previewSvg({ hair: 2 })).toContain('viewBox="0 0 32 32"');
   expect(itemSvg(0, 1)).toContain("<rect");
 });
+
+test("face page distinguishes old ownership from a newly read collection summary", () => {
+  const at = Date.parse("2026-01-01T01:02:03Z");
+  const chain = fakeChain({ ownerReadAt: new Map([[1, at]]) });
+  const html = facePage(1, chain.faces.get(1)!, chain);
+  expect(html).toContain('datetime="2026-01-01T01:02:03.000Z"');
+  expect(html).toContain("Ownership may have changed.");
+  expect(html).toContain('/' + A + '?refresh=1');
+});

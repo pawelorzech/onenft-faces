@@ -1,3 +1,4 @@
+import { mintPage } from "./mint-page.ts";
 import { SLOTS } from "./sprites.ts";
 import { svgOf, itemSvg, skinSvg, hairColourSvg, groundSvg, topColourSvg, accentSvg, previewSvg, unpackPins, faceOfDay, pinKeyOk, SKINS, HAIRS, GROUNDS, TOPCOLORS, ACCENTS } from "./faces.ts";
 import { chainState, chainStatus, contractEnabled, readNow, startRollScan, CONTRACT, CHAIN_ID, EPOCH_SECONDS, type ChainState } from "./contract.ts";
@@ -8,6 +9,8 @@ import { cardPng, squarePng } from "./image.ts";
 import { ensNames, resolveHolder, resolveFailed } from "./ens.ts";
 import { startAutoclaim, revealFor, keeperInfo } from "./autoclaim.ts";
 import { isAddress, type Address, type Hex } from "viem";
+import { refreshHoldings } from "./contract.ts";
+import { withDeadline } from "./swr.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const BOOT_AT = Date.now();
@@ -99,15 +102,24 @@ async function route(url: URL, req: Request): Promise<Response> {
   }
 
   // ---- from here on pages show chain state: the last good read at once; a wait only before the first read
-  const chain = await chainState();
-  const status = chainStatus();
+  let chain = await chainState();
+  let status = chainStatus();
 
   if (path === "/") return html(homePage(chain, epoch, await namesFor(chain, chain ? recentOwners(chain) : undefined), status));
   if (path === "/how") return html(howPage(chain, epoch));
   if (path === "/rarity") return html(rarityPage(chain, epoch));
-  if (path === "/ones") return html(onesPage(chain, epoch, await namesFor(chain, chain ? [...chain.faces.values()].filter((f) => f.one !== 255).map((f) => chain.owners.get(f.id)).filter(Boolean) as string[] : []), status));
+  if (path === "/ones") {
+    const snapshot = chain;
+    return html(onesPage(snapshot, epoch, await namesFor(snapshot, snapshot ? [...snapshot.faces.values()].filter((f) => f.one !== 255).map((f) => snapshot.owners.get(f.id)).filter(Boolean) as string[] : []), status));
+  }
   if (path === "/assets") return html(assetsPage(chain, epoch));
   if (path === "/yours") return html(yoursPage(chain, epoch, status, url.searchParams.get("bad")));
+  if (path === "/api/mints") {
+    if (!chain || status.stale) return json({ error: "chain unavailable" }, 0, 503);
+    const snapshot = chain;
+    const page = mintPage(snapshot, [...snapshot.faces.keys()], url.searchParams, (id) => faceJson(snapshot.faces.get(id)!, snapshot, undefined, status));
+    return json(page, 0, "error" in page ? 400 : 200);
+  }
   if (path === "/api/state") return json(stateJson(chain, await namesFor(chain, chain ? recentOwners(chain) : undefined), status), 15);
 
   // A rolled face is immutable; its image needs the record, and the record needs the chain once.
@@ -152,6 +164,10 @@ async function route(url: URL, req: Request): Promise<Response> {
       return html(failed ? chainDown(chain, epoch, "ENS did not answer. Try the name again in a minute, or use the address.") : notFound(chain, epoch, `No wallet answers to ${holder[2]}.`), failed ? 503 : 404);
     }
     const names = await namesFor(chain, [who]);
+    if (url.searchParams.get("refresh") === "1") {
+      chain = await withDeadline(refreshHoldings(), 2500).catch(() => chain) ?? chain;
+      status = chainStatus();
+    }
     if (holder[1]) return json(holderJson(who, chain, names, status));
     return html(holderPage(who, holder[2], chain, names, status));
   }

@@ -11,7 +11,7 @@
  */
 import { createPublicClient, http, parseAbi, parseAbiItem, toFunctionSelector, decodeEventLog, type Address, type Hex, type TransactionReceipt } from "viem";
 import { base, baseSepolia } from "viem/chains";
-import { Swr } from "./swr.ts";
+import { Swr, type SwrStatus } from "./swr.ts";
 
 export const CONTRACT = (process.env.CONTRACT_ADDRESS ?? "") as Address | "";
 export const CHAIN_ID = Number(process.env.CHAIN_ID ?? (CONTRACT ? 84532 : 0));
@@ -68,6 +68,8 @@ export type ChainState = {
   rolls: Map<number, Roll>;
   /** Unix milliseconds of the read this state came from. */
   readAt: number;
+  ownersReadAt?: number;
+  ownerReadAt?: Map<number, number>;
 };
 
 export type ChainStatus = {
@@ -103,64 +105,83 @@ export function scrubError(e: unknown): string {
   return m.replace(/https?:\/\/\S+/g, "[rpc]").slice(0, 200);
 }
 
-const faces = new Map<number, FaceRecord>();
-const owners = new Map<number, Address>();
+export function createFacesReader(client: Pick<NonNullable<ReturnType<typeof publicClient>>, "multicall" | "getBlockNumber">, address: Address, now = Date.now) {
+let faces = new Map<number, FaceRecord>();
+let owners = new Map<number, Address>();
+let ownerReadAt = new Map<number, number>();
 let ownersAt = 0;
+let forceOwners = false;
 const OWNERS_TTL_MS = 10 * 60_000;
 const RECENT = 120;
 
-/** One multicall in chunks. A reverted call is a null (the token does not exist); any other failure throws, so the read is all or nothing. */
-async function multicallBatch<T>(ids: number[], fn: "faces" | "ownerOf"): Promise<(T | null)[]> {
-  if (!client || !ids.length) return [];
-  const c = { address: CONTRACT as Address, abi: ABI } as const;
-  const out: (T | null)[] = [];
+/** One multicall in chunks. Existing Faces cannot be burned: every failure rejects the whole snapshot. */
+async function multicallBatch<T>(ids: number[], fn: "faces" | "ownerOf", blockNumber: bigint): Promise<T[]> {
+  if (!ids.length) return [];
+  const c = { address, abi: ABI } as const;
+  const out: T[] = [];
   for (let i = 0; i < ids.length; i += 500) {
     const chunk = ids.slice(i, i + 500);
-    const res = await client.multicall({ contracts: chunk.map((id) => ({ ...c, functionName: fn, args: [BigInt(id)] as const })), allowFailure: true });
+    const res = await client.multicall({ contracts: chunk.map((id) => ({ ...c, functionName: fn, args: [BigInt(id)] as const })), allowFailure: true, blockNumber });
     res.forEach((r, j) => {
       if (r.status === "success") out.push(r.result as T);
-      else if (/revert/i.test(r.error?.message ?? "")) out.push(null);
       else throw new Error(`${fn}(${chunk[j]}) failed: ${scrubError(r.error)}`);
     });
   }
   return out;
 }
 
-async function refreshFaces(total: number): Promise<void> {
+async function refreshFaces(total: number, blockNumber: bigint): Promise<Map<number, FaceRecord>> {
   const missing: number[] = [];
   for (let id = 1; id <= total; id++) if (!faces.has(id)) missing.push(id);
-  const res = await multicallBatch<readonly [bigint, bigint, number, Address]>(missing, "faces");
-  res.forEach((r, i) => { if (r && r[3] !== "0x0000000000000000000000000000000000000000") faces.set(missing[i], { id: missing[i], seed: r[0], pins: r[1], one: Number(r[2]), renderer: r[3] }); });
+  const res = await multicallBatch<readonly [bigint, bigint, number, Address]>(missing, "faces", blockNumber);
+  const next = new Map([...faces].filter(([id]) => id <= total));
+  res.forEach((r, i) => {
+    if (r[3] === "0x0000000000000000000000000000000000000000") throw new Error("missing face in supply");
+    next.set(missing[i], { id: missing[i], seed: r[0], pins: r[1], one: Number(r[2]), renderer: r[3] });
+  });
+  return next;
 }
 
 /** Recent tokens refresh every read; the rest every 10 minutes. Written only when every chunk answered. */
-async function refreshOwners(total: number): Promise<void> {
-  const all = Date.now() - ownersAt > OWNERS_TTL_MS;
+async function refreshOwners(total: number, blockNumber: bigint) {
+  const all = !ownersAt || total < owners.size || now() - ownersAt > OWNERS_TTL_MS || (forceOwners && now() - ownersAt >= TTL_MS);
   const from = all ? 1 : Math.max(1, total - RECENT);
-  const ids = Array.from({ length: total - from + 1 }, (_, i) => from + i);
-  const res = await multicallBatch<Address>(ids, "ownerOf");
-  res.forEach((r, i) => { if (r) owners.set(ids[i], r); });
-  if (all) ownersAt = Date.now();
+  const wanted = new Set(Array.from({ length: Math.max(0, total - from + 1) }, (_, i) => from + i));
+  for (let id = 1; id <= total; id++) if (!owners.has(id)) wanted.add(id);
+  const ids = [...wanted];
+  const res = await multicallBatch<Address>(ids, "ownerOf", blockNumber);
+  const next = new Map([...owners].filter(([id]) => id <= total));
+  const ages = new Map([...ownerReadAt].filter(([id]) => id <= total));
+  res.forEach((r, i) => { next.set(ids[i], r); ages.set(ids[i], now()); });
+  return { next, ages, all };
 }
 
 async function readChainState(): Promise<ChainState> {
-  if (!client || !CONTRACT) throw new Error("no contract configured");
-  const c = { address: CONTRACT, abi: ABI } as const;
+  const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
+  const c = { address, abi: ABI } as const;
   const [author, renderer, rendererLocked, total, pending, poolLeft, secondsLeft, epoch] = await client.multicall({
     contracts: [
       { ...c, functionName: "author" }, { ...c, functionName: "renderer" }, { ...c, functionName: "rendererLocked" },
       { ...c, functionName: "totalSupply" }, { ...c, functionName: "pending" }, { ...c, functionName: "poolLeft" }, { ...c, functionName: "secondsLeft" }, { ...c, functionName: "currentEpoch" },
     ],
     allowFailure: false,
+    blockNumber,
   });
   const totalSupply = Number(total);
-  await refreshFaces(totalSupply);
-  await refreshOwners(totalSupply);
-  return { address: CONTRACT, chainId: CHAIN_ID, author, renderer, rendererLocked, totalSupply, pending: Number(pending), poolLeft: Number(poolLeft), secondsLeft: Number(secondsLeft), epoch: Number(epoch), faces, owners, rolls, readAt: Date.now() };
+  const nextFaces = await refreshFaces(totalSupply, blockNumber);
+  const nextOwners = await refreshOwners(totalSupply, blockNumber);
+  faces = nextFaces; owners = nextOwners.next; ownerReadAt = nextOwners.ages;
+  if (nextOwners.all) ownersAt = now();
+  forceOwners = false;
+  return { address, chainId: CHAIN_ID, author, renderer, rendererLocked, totalSupply, pending: Number(pending), poolLeft: Number(poolLeft), secondsLeft: Number(secondsLeft), epoch: Number(epoch), faces, owners, rolls, readAt: now(), ownersReadAt: ownersAt, ownerReadAt };
+}
+return { read: readChainState, requestAll: () => { forceOwners = true; } };
 }
 
+const reader = client && CONTRACT ? createFacesReader(client, CONTRACT) : null;
+
 const store = new Swr<ChainState>({
-  load: readChainState,
+  load: () => reader ? reader.read() : Promise.reject(new Error("no contract configured")),
   ttlMs: TTL_MS,
   staleAfterMs: STALE_AFTER_MS,
   deadlineMs: DEADLINE_MS,
@@ -175,6 +196,30 @@ export async function chainState(): Promise<ChainState | null> {
 }
 export function readNow(): Promise<ChainState> {
   return store.refresh();
+}
+
+/** Explicit refreshes respect the same failure backoff as background reads. */
+export function refreshAllowed(status: Pick<SwrStatus, "error" | "errorAt" | "failures">, now = Date.now()): boolean {
+  return !status.error || status.errorAt === null || now - status.errorAt >= Math.min(60_000, 3_000 * 2 ** (status.failures - 1));
+}
+
+let holdingsRun: Promise<ChainState | null> | null = null;
+export async function refreshHoldings(): Promise<ChainState | null> {
+  if (!reader) return null;
+  if (holdingsRun) return holdingsRun;
+  if (!refreshAllowed(store.status())) return store.peek();
+  const hit = store.peek();
+  if (hit && Date.now() - (hit.ownersReadAt ?? 0) < TTL_MS) return hit;
+  holdingsRun = (async () => {
+    try { if (store.status().inflight) await store.refresh(); reader.requestAll(); await store.refresh(); } catch {}
+    return store.peek();
+  })().finally(() => { holdingsRun = null; });
+  return holdingsRun;
+}
+
+export function dataFreshness(chain: ChainState, id?: number) {
+  const readAt = id === undefined ? chain.ownersReadAt ?? chain.readAt : chain.ownerReadAt?.get(id) ?? chain.readAt;
+  return { readAt: new Date(readAt).toISOString(), ageSeconds: Math.max(0, Math.floor((Date.now() - readAt) / 1000)), stale: Date.now() - readAt > STALE_AFTER_MS };
 }
 export function chainStatus(): ChainStatus {
   const s = store.status();
