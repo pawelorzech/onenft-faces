@@ -6,8 +6,9 @@ import type { ChainState } from './contract.ts';
 const account = '0x2222222222222222222222222222222222222222';
 const address = '0x3333333333333333333333333333333333333333';
 const key = `onenft_roll:0x2105:${address}:${account}`;
-async function resume(states: object[], receipt: object | null = null, click = false, failMethod?: string) {
+async function resume(states: object[], receipt: object | null = null, click = false, failMethod?: string, record?: object) {
   const storage = new Map([[key, JSON.stringify({ stage: 'sent', hash: '0x' + 'a'.repeat(64), epoch: 20701 })]]);
+  if(record)storage.set(key,JSON.stringify(record));
   if(click)storage.clear();
   const calls: string[] = [];
   const elements = new Map<string, any>();
@@ -20,10 +21,10 @@ async function resume(states: object[], receipt: object | null = null, click = f
   runInNewContext(builderScript({ address, chainId: 8453, epoch: 20701 } as unknown as ChainState).replace(/^<script>\s*/, '').replace(/<\/script>$/, ''), {
     document: { getElementById: (id: string) => elements.get(id), querySelectorAll: () => [], querySelector: () => null, hidden: false },
     localStorage: { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => storage.set(k, v), removeItem: (k: string) => storage.delete(k) },
-    window: { ethereum: { on() {}, async request({ method }: { method: string }) { calls.push(method); if(method===failMethod)throw new Error('provider internal error'); if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [account]; if(click && method==='eth_chainId')return '0x2105'; if(click && method==='eth_call')return '0x'+'0'.repeat(192); if(click && method==='eth_sendTransaction')throw Object.assign(new Error('user rejected'), {code:4001}); throw new Error('Wallet is on Ethereum, not Base'); } } },
+    window: { ethereum: { on() {}, async request({ method }: { method: string }) { calls.push(method); if(method===failMethod)throw new Error('provider internal error'); if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [account]; if(method==='eth_chainId')return '0x2105'; if(click && method==='eth_call')return '0x'+'0'.repeat(192); if(click && method==='eth_sendTransaction')throw Object.assign(new Error('user rejected'), {code:4001}); throw new Error('Wallet is on Ethereum, not Base'); } } },
     AbortController, location,
-    setTimeout: (f: () => void, ms: number) => { if (ms !== 10000) timers.push(f); return 1; }, clearTimeout() {},
-    fetch: async (url: string) => { calls.push(url); return { ok: true, json: async () => url.startsWith('https:') ? { result: receipt } : { address: account, revealBlock: 0, rolledToday: false, soldOut: false, ...states[Math.min(statusIndex++, states.length - 1)] } }; },
+    setTimeout: (f: () => void, ms: number) => { if (ms !== 10000 && ms !== 12000 && ms !== 60000) timers.push(f); return 1; }, clearTimeout() {},
+    fetch: async (url: string) => { calls.push(url); return { ok: true, json: async () => url.startsWith('/api/transaction/') ? { chainId: 8453, contract: address, receipt } : { address: account, revealBlock: 0, rolledToday: false, soldOut: false, ...states[Math.min(statusIndex++, states.length - 1)] } }; },
   });
   for (let i = 0; i < 30; i++) await Promise.resolve();
   if(click)await elements.get('roll').handlers.get('click')();
@@ -49,7 +50,7 @@ test('on-chain pending commit advances to reveal without waiting for wallet rece
 
 test('receipt fallback reads Base independently of selected wallet chain', async () => {
   const r = await resume([{ state: 'none' }, { state: 'confirmed', tokenId: 44 }], { status: '0x1' });
-  expect(r.calls).toContain('https://mainnet.base.org');
+  expect(r.calls.some(c=>c.startsWith('/api/transaction/'))).toBe(true);
   expect(r.elements.get('msg').textContent).toContain('#44');
 });
 
@@ -97,4 +98,25 @@ test('a failed or malformed final API check never reaches transaction approval',
     expect(r.calls).not.toContain('eth_sendTransaction');
     expect(r.elements.get('msg').textContent).toContain('The chain could not verify your previous roll');
   }
+});
+
+
+test('unknown send remains blocked across repeated clicks',async()=>{
+ const r=await resume([{state:'none'}],null,true,'eth_sendTransaction');
+ await r.elements.get('roll').handlers.get('click')();
+ expect(r.calls.filter(m=>m==='eth_sendTransaction')).toHaveLength(1);
+ expect(JSON.parse(r.storage.get(key)!).stage).toBe('uncertain');
+ expect(r.elements.get('msg').textContent).toContain('unknown result');
+});
+
+
+test('manual reveal timeout is persisted and cannot send again',async()=>{
+ const r=await resume([{state:'no-keeper',revealBlock:123}],null,false,'eth_sendTransaction',{stage:'committed',hash:null});
+ await r.elements.get('manual').onclick();
+ await r.elements.get('manual').onclick();
+ expect(r.calls.filter(m=>m==='eth_sendTransaction')).toHaveLength(1);
+ expect(JSON.parse(r.storage.get(key)!).stage).toBe('uncertain');
+ const reloaded=await resume([{state:'no-keeper',revealBlock:123}],null,false,undefined,{stage:'uncertain'});
+ expect(reloaded.calls).not.toContain('eth_sendTransaction');
+ expect(reloaded.elements.get('msg').textContent).toContain('unknown result');
 });

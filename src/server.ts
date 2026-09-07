@@ -1,3 +1,4 @@
+import { transactionApi } from "./transaction-status.ts";
 import { mintPage } from "./mint-page.ts";
 import { SLOTS } from "./sprites.ts";
 import { svgOf, itemSvg, skinSvg, hairColourSvg, groundSvg, topColourSvg, accentSvg, previewSvg, unpackPins, faceOfDay, pinKeyOk, SKINS, HAIRS, GROUNDS, TOPCOLORS, ACCENTS } from "./faces.ts";
@@ -12,6 +13,7 @@ import { isAddress, type Address, type Hex } from "viem";
 import { refreshHoldings } from "./contract.ts";
 import { withDeadline } from "./swr.ts";
 
+const transactionRead = transactionApi({ address: CONTRACT, chainId: CHAIN_ID, tokenReads: false });
 const PORT = Number(process.env.PORT ?? 3000);
 const BOOT_AT = Date.now();
 
@@ -63,6 +65,8 @@ export async function handle(req: Request): Promise<Response> {
 
 async function route(url: URL, req: Request): Promise<Response> {
   const path = url.pathname;
+  const transactionResponse = await transactionRead(url);
+  if (transactionResponse) return transactionResponse;
   // The day from the clock, the same arithmetic the contract runs on block.timestamp. Never a cached chain read.
   const epoch = Math.floor(Date.now() / 1000 / EPOCH_SECONDS);
 

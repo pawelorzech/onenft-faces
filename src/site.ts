@@ -1,3 +1,4 @@
+import { readChain, sendWithTimeout } from "./chain-read.ts";
 import { hasPendingCommit } from "./commit-guard.ts";
 import { walletError } from "./wallet-error.ts";
 /**
@@ -591,6 +592,8 @@ var galleryButtons=document.querySelectorAll('.items button');
 var DRAFT='onenft_pins:'+(CFG.address||'none');var pricesTag=CFG.prices.join(',');
 ${walletError.toString()}
 ${hasPendingCommit.toString()}
+${readChain.toString()}
+${sendWithTimeout.toString()}
 function say(t){if(out)out.textContent=t}
 function link(h){return ' <a href="'+CFG.explorer+'/tx/'+h+'" target="_blank" rel="noopener">View transaction</a>'}
 function show(t,h){if(!out)return;out.textContent=t;if(h)out.insertAdjacentHTML('beforeend',link(h))}
@@ -628,11 +631,7 @@ function key(a){return 'onenft_roll:'+CFG.chainHex+':'+CFG.address.toLowerCase()
 function keepRec(a,r){try{localStorage.setItem(key(a),JSON.stringify(r))}catch(e){}}
 function rec(a){try{return JSON.parse(localStorage.getItem(key(a))||'null')}catch(e){return null}}
 function drop(a){try{localStorage.removeItem(key(a))}catch(e){}}
-async function receipt(hash){
-  // Read the collection's chain, independently of the network selected in the wallet.
-  var ctl=new AbortController();var timer=setTimeout(function(){ctl.abort()},10000);
-  try{var r=await fetch(CFG.rpc,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_getTransactionReceipt',params:[hash]}),signal:ctl.signal});if(!r.ok)return null;var data=await r.json();return data.result||null}catch(e){return null}finally{clearTimeout(timer)}
-}
+async function receipt(hash){try{return (await readChain('/api/transaction/'+hash,CFG.chainHex,CFG.address)).receipt}catch(e){return null}}
 async function status(from,send){var ctl=new AbortController();var timer=setTimeout(function(){ctl.abort()},10000);try{var r=await fetch((send?'/api/reveal/':'/api/roll/')+from,{method:send?'POST':'GET',cache:'no-store',signal:ctl.signal});if(!r.ok)throw new Error('status unavailable');return await r.json()}catch(e){return {state:'rpc-down',reason:'this site did not answer'}}finally{clearTimeout(timer)}}
 function offerCheck(f){check.hidden=false;check.onclick=function(){check.hidden=true;f()}}
 function done(id,from){if(!account||account.toLowerCase()!==from.toLowerCase())return; say('Your face is #'+id+'. Opening it.');drop(from);try{localStorage.removeItem(DRAFT)}catch(e){}setTimeout(function(){location.href='/face/'+id},1200)}
@@ -666,32 +665,40 @@ async function revealLoop(from,commitHash){
   }
   say('Your roll is committed. The reveal is taking long; check its status before starting another. Check again in a minute.');offerCheck(function(){revealLoop(from,commitHash)});
 }
-async function manualReveal(from){
-  var submitting=false;
-  manual.hidden=true;
-  try{
-    say('Confirm the reveal in your wallet. You pay network gas.');
-    submitting=true;var hash=await eth.request({method:'eth_sendTransaction',params:[{from:from,to:CFG.address,data:CFG.revealSelector+from.slice(2).toLowerCase().padStart(64,'0')}]});
-    show('Reveal sent. Waiting for confirmation.',hash);
-    for(var i=0;i<45;i++){var r=await receipt(hash);if(r){if(r.status==='0x1'){var s=await status(from,false);if(s.tokenId)return done(s.tokenId,from);say('Revealed. Finding your face.');return revealLoop(from,null)}show('The network rejected the reveal. It may have been revealed already. Checking.',hash);return revealLoop(from,null)}await sleep(2500)}
-    show('We cannot confirm the reveal yet. Check its status before trying again.',hash);offerCheck(function(){revealLoop(from,null)});
-  }catch(e){say(walletError(e,submitting)+' Your roll remains committed; check its reveal status.');manual.hidden=false}
+async function waitReveal(from,hash){
+  show('Reveal sent. Waiting for confirmation.',hash);
+  for(var i=0;i<45;i++){var r=await receipt(hash);if(r){if(r.status==='0x1'){var s=await status(from,false);if(s.tokenId)return done(s.tokenId,from);say('Revealed. Finding your face.');return revealLoop(from,null)}show('The network rejected the reveal. It may have been revealed already. Checking.',hash);return revealLoop(from,null)}await sleep(2500)}
+  show('We cannot confirm the reveal yet. Check its status before trying again.',hash);offerCheck(function(){waitReveal(from,hash)});
 }
+async function manualReveal(from){
+  if(manual.hidden)return;var submitting=false;manual.hidden=true;
+  try{
+    var pending=rec(from);if(pending&&pending.stage==='uncertain'){uncertain(from);return}if(pending&&pending.stage==='reveal-sent')return waitReveal(from,pending.hash);
+    var network=await eth.request({method:'eth_chainId'}),accounts=await eth.request({method:'eth_accounts'});
+    if(BigInt(network)!==BigInt(CFG.chainHex))throw Object.assign(new Error('wrong network'),{code:4901});
+    if(!accounts||!accounts[0]||accounts[0].toLowerCase()!==from.toLowerCase())throw Object.assign(new Error('account changed'),{code:4100});
+    say('Confirm the reveal in your wallet. You pay network gas.');
+    localStorage.setItem(key(from),JSON.stringify({stage:'uncertain'}));submitting=true;
+    var hash=await sendWithTimeout(eth,{from:from,to:CFG.address,data:CFG.revealSelector+from.slice(2).toLowerCase().padStart(64,'0')});
+    keepRec(from,{stage:'reveal-sent',hash:hash});return waitReveal(from,hash);
+  }catch(e){if(submitting&&e&&e.code===4001){keepRec(from,{stage:'committed',hash:null});submitting=false}if(submitting){uncertain(from);return}say(walletError(e,false)+' Your roll remains committed; check its reveal status.');manual.hidden=false}
+}
+function uncertain(from){say('The previous request has an unknown result. Check wallet activity before trying again.');offerCheck(function(){if(confirm('Check your wallet activity first. Clear this warning only if no transaction was sent. Have you confirmed that nothing was sent?')){drop(from);lock(false);update();say('The warning is cleared. You can try again.')}else uncertain(from)})}
 async function resume(){
   if(!eth||!eth.request)return;
   try{var accs=await eth.request({method:'eth_accounts'});if(!accs||!accs.length)return;account=accs[0];var r=rec(account);if(!r)return;
-    lock(true);if(r.stage==='sent'){show('Transaction sent. Waiting for confirmation.',r.hash);waitCommit(account,r.hash)}else{show('Your roll is committed. Waiting for the reveal.',r.hash);revealLoop(account,r.hash)}}catch(e){}
+    lock(true);if(r.stage==='uncertain'){uncertain(account);return}if(r.stage==='reveal-sent'){waitReveal(account,r.hash);return}if(r.stage==='sent'){show('Transaction sent. Waiting for confirmation.',r.hash);waitCommit(account,r.hash)}else{show('Your roll is committed. Waiting for the reveal.',r.hash);revealLoop(account,r.hash)}}catch(e){}
 }
 if(eth&&eth.on){eth.on('accountsChanged',function(accs){var a=accs&&accs[0]||null;if(account&&(!a||a.toLowerCase()!==account.toLowerCase())){if(locked){say('The wallet account changed. The roll in progress belongs to the previous account; switch back to follow it.')}account=a;if(!locked&&a){var r=rec(a);if(r){resume()}}}});
   eth.on('chainChanged',function(id){if(parseInt(id,16)===parseInt(CFG.chainHex,16))return;say('The wallet switched network. Switch back to '+CFG.name+' to roll.')})}
 btn.addEventListener('click',async function(){
-  var submitting=false;var step='connecting to your wallet';
+  if(locked)return;var from=null;var submitting=false;var step='connecting to your wallet';
   if(!eth||!eth.request){say('No wallet detected. Open this site in your wallet\\u2019s browser, or install one like Rabby, MetaMask or Coinbase Wallet.');return}
   lock(true);
   var snapPins=packed(),snapN=count(),snapWei=BigInt(CFG.prices[snapN]);
   try{
-    var accs=await eth.request({method:'eth_requestAccounts'});if(!accs||!accs.length)throw new Error('the wallet gave no account');var from=accs[0];account=from;
-    var r=rec(from);if(r){show('A roll from this wallet is already in progress.',r.hash);return r.stage==='sent'?waitCommit(from,r.hash):revealLoop(from,r.hash)}
+    var accs=await eth.request({method:'eth_requestAccounts'});if(!accs||!accs.length)throw new Error('the wallet gave no account');from=accs[0];account=from;
+    var r=rec(from);if(r&&r.stage==='uncertain'){uncertain(from);return}if(r&&r.stage==='reveal-sent')return waitReveal(from,r.hash);if(r){show('A roll from this wallet is already in progress.',r.hash);return r.stage==='sent'?waitCommit(from,r.hash):revealLoop(from,r.hash)}
     var st=await status(from,false);
     if(st.state==='rpc-down'){say('The chain did not answer. Try again in a minute.');lock(false);update();return}
     if(st.state==='confirmed'&&st.tokenId)return done(st.tokenId,from);
@@ -715,10 +722,11 @@ btn.addEventListener('click',async function(){
       return latest.revealBlock>0||latest.rolledToday;
     })){say('Your previous roll must be revealed before starting another.');keepRec(from,{stage:'committed',hash:null,epoch:CFG.epoch});return revealLoop(from,null)}
     step='requesting transaction approval';
-    submitting=true;var hash=await eth.request({method:'eth_sendTransaction',params:[tx]});
+    localStorage.setItem(key(from),JSON.stringify({stage:'uncertain'}));
+    submitting=true;var hash=await sendWithTimeout(eth,tx);
     keepRec(from,{stage:'sent',hash:hash,epoch:CFG.epoch,pins:snapPins});show('Transaction sent. Waiting for confirmation.',hash);
     await waitCommit(from,hash);
-  }catch(e){var message=walletError(e,submitting);if(message.indexOf('The wallet could not complete')===0)message+=' Failed while '+step+'.';say(message);lock(false);update()}
+  }catch(e){if(submitting&&e&&e.code===4001){drop(from);submitting=false}if(submitting){uncertain(from);return}var message=walletError(e,submitting);if(message.indexOf('The wallet could not complete')===0)message+=' Failed while '+step+'.';say(message);lock(false);update()}
 });
 resume();
 })();
