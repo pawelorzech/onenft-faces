@@ -627,6 +627,16 @@ if(window.matchMedia&&matchMedia('(max-width:900px)').matches){document.querySel
 loadDraft();update();
 if(!btn)return;
 var eth=window.ethereum;var account=null;
+var disconnect=document.getElementById('disconnect');var walletLabel=document.getElementById('builder-wallet');var DISCONNECTED='onenft_disconnected';
+function disconnected(){try{return localStorage.getItem(DISCONNECTED)==='1'}catch(e){return false}}
+function showWallet(a){if(disconnect)disconnect.hidden=!a;if(walletLabel)walletLabel.textContent=a?'Connected: '+a.slice(0,6)+'…'+a.slice(-4):'Wallet disconnected'}
+if(disconnect)disconnect.addEventListener('click',function(){
+  try{localStorage.setItem(DISCONNECTED,'1');localStorage.removeItem('onenft_who')}catch(e){}
+  account=null;showWallet(null);lock(false);update();check.hidden=true;manual.hidden=true;
+  say('Wallet disconnected from this page. Pending rolls are kept. To remove site permissions, disconnect in your wallet too.');
+  location.reload();
+});
+if(disconnected()){showWallet(null);say('Wallet disconnected from this page. To remove site permissions, disconnect in your wallet too.')}
 function key(a){return 'onenft_roll:'+CFG.chainHex+':'+CFG.address.toLowerCase()+':'+a.toLowerCase()}
 function keepRec(a,r){try{localStorage.setItem(key(a),JSON.stringify(r))}catch(e){}}
 function rec(a){try{return JSON.parse(localStorage.getItem(key(a))||'null')}catch(e){return null}}
@@ -634,7 +644,7 @@ function drop(a){try{localStorage.removeItem(key(a))}catch(e){}}
 async function receipt(hash){try{return (await readChain('/api/transaction/'+hash,CFG.chainHex,CFG.address)).receipt}catch(e){return null}}
 async function status(from,send){var ctl=new AbortController();var timer=setTimeout(function(){ctl.abort()},10000);try{var r=await fetch((send?'/api/reveal/':'/api/roll/')+from,{method:send?'POST':'GET',cache:'no-store',signal:ctl.signal});if(!r.ok)throw new Error('status unavailable');return await r.json()}catch(e){return {state:'rpc-down',reason:'this site did not answer'}}finally{clearTimeout(timer)}}
 function offerCheck(f){check.hidden=false;check.onclick=function(){check.hidden=true;f()}}
-function done(id,from){if(!account||account.toLowerCase()!==from.toLowerCase())return; say('Your face is #'+id+'. Opening it.');drop(from);try{localStorage.removeItem(DRAFT)}catch(e){}setTimeout(function(){location.href='/face/'+id},1200)}
+function done(id,from){if(!account||account.toLowerCase()!==from.toLowerCase())return; say('Your face is #'+id+'. Opening it.');drop(from);try{localStorage.removeItem(DRAFT)}catch(e){}setTimeout(function(){if(account&&account.toLowerCase()===from.toLowerCase())location.href='/face/'+id},1200)}
 async function waitCommit(from,hash){
   for(var i=0;i<45;i++){
     var s=await status(from,false);
@@ -652,8 +662,9 @@ async function waitCommit(from,hash){
 async function revealLoop(from,commitHash){
   for(var i=0;i<80;i++){
     var s=await status(from,true);
+    if(!account||account.toLowerCase()!==from.toLowerCase())return;
     if(s.state==='confirmed'&&s.tokenId){return done(s.tokenId,from)}
-    if(s.state==='none'&&s.rolledToday&&!s.tokenId){say('Your roll is revealed. Finding your face.');await sleep(3000);continue}
+    if(s.state==='none'&&s.rolledToday&&!s.tokenId){say('This wallet has used today’s roll. The face is not available in the index yet. You can edit pins and check again.');lock(false);update();offerCheck(function(){lock(true);revealLoop(from,commitHash)});return}
     if(s.state==='none'&&!s.rolledToday){say('The chain shows no roll for this wallet today.');drop(from);lock(false);update();return}
     if(s.state==='waiting'){say('Your roll is committed. Waiting for the reveal block ('+(s.head||'?')+' of '+(s.revealBlock||'?')+').')}
     else if(s.state==='sent'){show('Reveal sent. Waiting for confirmation.',s.tx)}
@@ -685,8 +696,8 @@ async function manualReveal(from){
 }
 function uncertain(from){say('The previous request has an unknown result. Check wallet activity before trying again.');offerCheck(function(){if(confirm('Check your wallet activity first. Clear this warning only if no transaction was sent. Have you confirmed that nothing was sent?')){drop(from);lock(false);update();say('The warning is cleared. You can try again.')}else uncertain(from)})}
 async function resume(){
-  if(!eth||!eth.request)return;
-  try{var accs=await eth.request({method:'eth_accounts'});if(!accs||!accs.length)return;account=accs[0];var r=rec(account);if(!r)return;
+  if(!eth||!eth.request||disconnected())return;
+  try{var accs=await eth.request({method:'eth_accounts'});if(!accs||!accs.length||disconnected())return;account=accs[0];showWallet(account);var r=rec(account);if(!r)return;
     lock(true);if(r.stage==='uncertain'){uncertain(account);return}if(r.stage==='reveal-sent'){waitReveal(account,r.hash);return}if(r.stage==='sent'){show('Transaction sent. Waiting for confirmation.',r.hash);waitCommit(account,r.hash)}else{show('Your roll is committed. Waiting for the reveal.',r.hash);revealLoop(account,r.hash)}}catch(e){}
 }
 if(eth&&eth.on){eth.on('accountsChanged',function(accs){var a=accs&&accs[0]||null;if(account&&(!a||a.toLowerCase()!==account.toLowerCase())){if(locked){say('The wallet account changed. The roll in progress belongs to the previous account; switch back to follow it.')}account=a;if(!locked&&a){var r=rec(a);if(r){resume()}}}});
@@ -697,7 +708,7 @@ btn.addEventListener('click',async function(){
   lock(true);
   var snapPins=packed(),snapN=count(),snapWei=BigInt(CFG.prices[snapN]);
   try{
-    var accs=await eth.request({method:'eth_requestAccounts'});if(!accs||!accs.length)throw new Error('the wallet gave no account');from=accs[0];account=from;
+    var accs=await eth.request({method:'eth_requestAccounts'});if(!accs||!accs.length)throw new Error('the wallet gave no account');from=accs[0];account=from;try{localStorage.removeItem(DISCONNECTED)}catch(e){}showWallet(account);
     var r=rec(from);if(r&&r.stage==='uncertain'){uncertain(from);return}if(r&&r.stage==='reveal-sent')return waitReveal(from,r.hash);if(r){show('A roll from this wallet is already in progress.',r.hash);return r.stage==='sent'?waitCommit(from,r.hash):revealLoop(from,r.hash)}
     var st=await status(from,false);
     if(st.state==='rpc-down'){say('The chain did not answer. Try again in a minute.');lock(false);update();return}
@@ -819,6 +830,8 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
 <p class="small">Every one of the ${num(MAX_SUPPLY)} faces has been rolled or is being revealed. Nothing more can be rolled.${badge}</p>`;
   } else if (chain) {
     cta = `<div class="price"><span class="small">Pin fee</span><span class="syne" id="price">0 ETH</span></div>
+<p class="small" id="builder-wallet"></p>
+<button class="cta ghost syne" id="disconnect" type="button" hidden>Disconnect wallet</button>
 <button class="cta syne" id="roll">Roll a face</button>
 <p class="msg" id="msg" aria-live="polite"></p>
 <button class="cta ghost syne" id="check" type="button" hidden>Check status</button>

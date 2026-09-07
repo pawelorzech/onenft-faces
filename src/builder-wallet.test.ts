@@ -6,20 +6,22 @@ import type { ChainState } from './contract.ts';
 const account = '0x2222222222222222222222222222222222222222';
 const address = '0x3333333333333333333333333333333333333333';
 const key = `onenft_roll:0x2105:${address}:${account}`;
-async function resume(states: object[], receipt: object | null = null, click = false, failMethod?: string, record?: object) {
+async function resume(states: object[], receipt: object | null = null, click = false, failMethod?: string, record?: object, disconnected = false) {
   const storage = new Map([[key, JSON.stringify({ stage: 'sent', hash: '0x' + 'a'.repeat(64), epoch: 20701 })]]);
   if(record)storage.set(key,JSON.stringify(record));
   if(click)storage.clear();
+  if(disconnected)storage.set('onenft_disconnected','1');
   const calls: string[] = [];
   const elements = new Map<string, any>();
-  for (const id of ['roll', 'msg', 'preview', 'price', 'keep', 'clear', 'sum', 'check', 'manual', 'fee']) {
+  for (const id of ['roll', 'msg', 'preview', 'price', 'keep', 'clear', 'sum', 'check', 'manual', 'fee', 'disconnect', 'builder-wallet']) {
     elements.set(id, { textContent: '', hidden: true, disabled: false, getAttribute() { return ''; }, handlers: new Map(), addEventListener(event: string, handler: () => Promise<void>) { this.handlers.set(event, handler); }, querySelector() { return null; }, insertAdjacentHTML() {} });
   }
   const timers: (() => void)[] = [];
-  const location = { href: '' };
+  const galleryButton = { disabled: false, dataset: {slot:'head',item:'0'}, setAttribute() {}, addEventListener() {} };
+  const location = { href: '', reloaded: false, reload() { this.reloaded = true; } };
   let statusIndex = 0;
   runInNewContext(builderScript({ address, chainId: 8453, epoch: 20701 } as unknown as ChainState).replace(/^<script>\s*/, '').replace(/<\/script>$/, ''), {
-    document: { getElementById: (id: string) => elements.get(id), querySelectorAll: () => [], querySelector: () => null, hidden: false },
+    document: { getElementById: (id: string) => elements.get(id), querySelectorAll: (selector: string) => selector === '.items button' ? [galleryButton] : [], querySelector: () => null, hidden: false },
     localStorage: { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => storage.set(k, v), removeItem: (k: string) => storage.delete(k) },
     window: { ethereum: { on() {}, async request({ method }: { method: string }) { calls.push(method); if(method===failMethod)throw new Error('provider internal error'); if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [account]; if(method==='eth_chainId')return '0x2105'; if(click && method==='eth_call')return '0x'+'0'.repeat(192); if(click && method==='eth_sendTransaction')throw Object.assign(new Error('user rejected'), {code:4001}); throw new Error('Wallet is on Ethereum, not Base'); } } },
     AbortController, location,
@@ -28,7 +30,7 @@ async function resume(states: object[], receipt: object | null = null, click = f
   });
   for (let i = 0; i < 30; i++) await Promise.resolve();
   if(click)await elements.get('roll').handlers.get('click')();
-  return { storage, calls, elements, timers, location };
+  return { storage, calls, elements, timers, location, galleryButton };
 }
 
 test('saved sent roll already revealed resolves from Faces even when wallet is on another chain', async () => {
@@ -119,4 +121,31 @@ test('manual reveal timeout is persisted and cannot send again',async()=>{
  const reloaded=await resume([{state:'no-keeper',revealBlock:123}],null,false,undefined,{stage:'uncertain'});
  expect(reloaded.calls).not.toContain('eth_sendTransaction');
  expect(reloaded.elements.get('msg').textContent).toContain('unknown result');
+});
+
+test('revealed roll missing from index releases builder and offers explicit retry without sending again', async () => {
+  const r = await resume([{ state: 'none', rolledToday: true }, {state:'confirmed',tokenId:46}], null, false, undefined, {stage:'committed'});
+  expect(r.elements.get('roll').disabled).toBe(false);
+  expect(r.elements.get('msg').textContent).toContain('not available in the index');
+  expect(r.galleryButton.disabled).toBe(false);
+  expect(r.elements.get('check').hidden).toBe(false);
+  expect(r.storage.has(key)).toBe(true);
+  expect(r.timers).toHaveLength(0);
+  r.elements.get('check').onclick();
+  for(let i=0;i<30;i++)await Promise.resolve();
+  expect(r.elements.get('msg').textContent).toContain('#46');
+  expect(r.calls).not.toContain('eth_sendTransaction');
+});
+
+test('disconnect remains available during pending roll and preserves recovery after reload', async () => {
+  const r = await resume([{state:'waiting',revealBlock:123}]);
+  expect(r.elements.get('disconnect').hidden).toBe(false);
+  await r.elements.get('disconnect').handlers.get('click')();
+  expect(r.storage.get('onenft_disconnected')).toBe('1');
+  expect(r.storage.has(key)).toBe(true);
+  expect(r.location.reloaded).toBe(true);
+  const reloaded = await resume([{state:'waiting',revealBlock:123}],null,false,undefined,undefined,true);
+  expect(reloaded.elements.get('roll').disabled).toBe(false);
+  expect(reloaded.calls).toHaveLength(0);
+  expect(reloaded.storage.has(key)).toBe(true);
 });
