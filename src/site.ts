@@ -568,7 +568,7 @@ document.querySelectorAll('[data-dl]').forEach(function(el){el.addEventListener(
  * is ever sent twice by itself. A draft of the pins survives a refresh as long
  * as the prices have not changed.
  */
-function builderScript(chain: ChainState | null): string {
+export function builderScript(chain: ChainState | null): string {
   const cfg = JSON.stringify({
     address: chain?.address ?? null,
     chainHex: chain ? "0x" + chain.chainId.toString(16) : null,
@@ -628,13 +628,22 @@ function key(a){return 'onenft_roll:'+CFG.chainHex+':'+CFG.address.toLowerCase()
 function keepRec(a,r){try{localStorage.setItem(key(a),JSON.stringify(r))}catch(e){}}
 function rec(a){try{return JSON.parse(localStorage.getItem(key(a))||'null')}catch(e){return null}}
 function drop(a){try{localStorage.removeItem(key(a))}catch(e){}}
-async function receipt(hash){try{return await eth.request({method:'eth_getTransactionReceipt',params:[hash]})}catch(e){return null}}
-async function status(from,send){try{var r=await fetch((send?'/api/reveal/':'/api/roll/')+from,{method:send?'POST':'GET',cache:'no-store'});return await r.json()}catch(e){return {state:'rpc-down',reason:'this site did not answer'}}}
+async function receipt(hash){
+  // Read the collection's chain, independently of the network selected in the wallet.
+  var ctl=new AbortController();var timer=setTimeout(function(){ctl.abort()},10000);
+  try{var r=await fetch(CFG.rpc,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_getTransactionReceipt',params:[hash]}),signal:ctl.signal});if(!r.ok)return null;var data=await r.json();return data.result||null}catch(e){return null}finally{clearTimeout(timer)}
+}
+async function status(from,send){var ctl=new AbortController();var timer=setTimeout(function(){ctl.abort()},10000);try{var r=await fetch((send?'/api/reveal/':'/api/roll/')+from,{method:send?'POST':'GET',cache:'no-store',signal:ctl.signal});if(!r.ok)throw new Error('status unavailable');return await r.json()}catch(e){return {state:'rpc-down',reason:'this site did not answer'}}finally{clearTimeout(timer)}}
 function offerCheck(f){check.hidden=false;check.onclick=function(){check.hidden=true;f()}}
-function done(id){say('Your face is #'+id+'. Opening it.');drop(account);try{localStorage.removeItem(DRAFT)}catch(e){}setTimeout(function(){location.href='/face/'+id},1200)}
+function done(id,from){if(!account||account.toLowerCase()!==from.toLowerCase())return; say('Your face is #'+id+'. Opening it.');drop(from);try{localStorage.removeItem(DRAFT)}catch(e){}setTimeout(function(){location.href='/face/'+id},1200)}
 async function waitCommit(from,hash){
   for(var i=0;i<45;i++){
+    var s=await status(from,false);
+    if(!account||account.toLowerCase()!==from.toLowerCase())return;
+    if(s.state==='confirmed'&&s.tokenId)return done(s.tokenId,from);
+    if(s.revealBlock||s.rolledToday){keepRec(from,{stage:'committed',hash:hash,epoch:CFG.epoch});return revealLoop(from,hash)}
     var r=await receipt(hash);
+    if(!account||account.toLowerCase()!==from.toLowerCase())return;
     if(r){if(r.status==='0x1'){keepRec(from,{stage:'committed',hash:hash,epoch:CFG.epoch});show('Your roll is committed. Waiting for the reveal.',hash);return revealLoop(from,hash)}
       drop(from);show('The network rejected the commit. Nothing was spent beyond gas. You can roll again.',hash);lock(false);update();return}
     await sleep(document.hidden?4000:2000);
@@ -644,7 +653,7 @@ async function waitCommit(from,hash){
 async function revealLoop(from,commitHash){
   for(var i=0;i<80;i++){
     var s=await status(from,true);
-    if(s.state==='confirmed'&&s.tokenId){return done(s.tokenId)}
+    if(s.state==='confirmed'&&s.tokenId){return done(s.tokenId,from)}
     if(s.state==='none'&&s.rolledToday&&!s.tokenId){say('Your roll is revealed. Finding your face.');await sleep(3000);continue}
     if(s.state==='none'&&!s.rolledToday){say('The chain shows no roll for this wallet today.');drop(from);lock(false);update();return}
     if(s.state==='waiting'){say('Your roll is committed. Waiting for the reveal block ('+(s.head||'?')+' of '+(s.revealBlock||'?')+').')}
@@ -664,7 +673,7 @@ async function manualReveal(from){
     say('Confirm the reveal in your wallet. You pay network gas.');
     submitting=true;var hash=await eth.request({method:'eth_sendTransaction',params:[{from:from,to:CFG.address,data:CFG.revealSelector+from.slice(2).toLowerCase().padStart(64,'0')}]});
     show('Reveal sent. Waiting for confirmation.',hash);
-    for(var i=0;i<45;i++){var r=await receipt(hash);if(r){if(r.status==='0x1'){var s=await status(from,false);if(s.tokenId)return done(s.tokenId);say('Revealed. Finding your face.');return revealLoop(from,null)}show('The network rejected the reveal. It may have been revealed already. Checking.',hash);return revealLoop(from,null)}await sleep(2500)}
+    for(var i=0;i<45;i++){var r=await receipt(hash);if(r){if(r.status==='0x1'){var s=await status(from,false);if(s.tokenId)return done(s.tokenId,from);say('Revealed. Finding your face.');return revealLoop(from,null)}show('The network rejected the reveal. It may have been revealed already. Checking.',hash);return revealLoop(from,null)}await sleep(2500)}
     show('We cannot confirm the reveal yet. Check its status before trying again.',hash);offerCheck(function(){revealLoop(from,null)});
   }catch(e){say(walletError(e,submitting)+' Your roll remains committed; check its reveal status.');manual.hidden=false}
 }

@@ -28,7 +28,7 @@ test("the generated builder checks a commitment before send and resumes it acros
   const calls:string[]=[];let accountReads=0,checks=0;
   const provider={request:async({method}:{method:string})=>{calls.push(method);if(method==="eth_accounts")return ++accountReads===1?[]:[who];if(method==="eth_requestAccounts")return[who];if(method==="eth_chainId")return"0x2105";if(method==="eth_call")return"0x"+"0".repeat(64)+"1".padStart(64,"0")+"0".repeat(64);return null;}};
   const storage=new Map<string,string>();
-  runInNewContext(script,{window:{ethereum:provider},document:{getElementById:node,querySelectorAll:()=>[],querySelector:()=>null},localStorage:{getItem:(k:string)=>storage.get(k)??null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},fetch:async()=>({ok:true,json:async()=>++checks===1?{state:"none",revealBlock:0,rolledToday:false,soldOut:false}:{state:"no-keeper",revealBlock:101,epoch:1}}),setTimeout,clearTimeout,URLSearchParams,console});
+  runInNewContext(script,{window:{ethereum:provider},document:{getElementById:node,querySelectorAll:()=>[],querySelector:()=>null},localStorage:{getItem:(k:string)=>storage.get(k)??null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},fetch:async()=>({ok:true,json:async()=>++checks===1?{state:"none",revealBlock:0,rolledToday:false,soldOut:false}:{state:"no-keeper",revealBlock:101,epoch:1}}),setTimeout,clearTimeout,AbortController,URLSearchParams,console});
   await node("roll").handlers.get("click")();
   expect(calls).toContain("eth_call");
   expect(calls).not.toContain("eth_sendTransaction");
