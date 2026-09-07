@@ -685,28 +685,36 @@ async function resume(){
 if(eth&&eth.on){eth.on('accountsChanged',function(accs){var a=accs&&accs[0]||null;if(account&&(!a||a.toLowerCase()!==account.toLowerCase())){if(locked){say('The wallet account changed. The roll in progress belongs to the previous account; switch back to follow it.')}account=a;if(!locked&&a){var r=rec(a);if(r){resume()}}}});
   eth.on('chainChanged',function(id){if(parseInt(id,16)===parseInt(CFG.chainHex,16))return;say('The wallet switched network. Switch back to '+CFG.name+' to roll.')})}
 btn.addEventListener('click',async function(){
-  var submitting=false;
+  var submitting=false;var step='connecting to your wallet';
   if(!eth||!eth.request){say('No wallet detected. Open this site in your wallet\\u2019s browser, or install one like Rabby, MetaMask or Coinbase Wallet.');return}
   lock(true);
   var snapPins=packed(),snapN=count(),snapWei=BigInt(CFG.prices[snapN]);
   try{
     var accs=await eth.request({method:'eth_requestAccounts'});if(!accs||!accs.length)throw new Error('the wallet gave no account');var from=accs[0];account=from;
     var r=rec(from);if(r){show('A roll from this wallet is already in progress.',r.hash);return r.stage==='sent'?waitCommit(from,r.hash):revealLoop(from,r.hash)}
-    try{await eth.request({method:'wallet_switchEthereumChain',params:[{chainId:CFG.chainHex}]})}
-    catch(e){if(e&&e.code===4902){await eth.request({method:'wallet_addEthereumChain',params:[{chainId:CFG.chainHex,chainName:CFG.name,rpcUrls:[CFG.rpc],nativeCurrency:{name:'Ether',symbol:'ETH',decimals:18},blockExplorerUrls:[CFG.explorer]}]})}else{throw e}}
     var st=await status(from,false);
     if(st.state==='rpc-down'){say('The chain did not answer. Try again in a minute.');lock(false);update();return}
+    if(st.state==='confirmed'&&st.tokenId)return done(st.tokenId,from);
     if(st.revealBlock){say('You have a roll waiting to be revealed.');keepRec(from,{stage:'committed',hash:null,epoch:CFG.epoch});return revealLoop(from,null)}
     if(st.rolledToday){say('This wallet rolled today already. Midnight UTC resets it.');lock(false);update();return}
     if(st.soldOut){say('Sold out. Every face has been rolled or is being revealed.');lock(false);update();return}
+    step='checking your wallet network';
+    var network=await eth.request({method:'eth_chainId'});
+    if(BigInt(network)!==BigInt(CFG.chainHex)){
+    step='switching your wallet to '+CFG.name;
+    try{await eth.request({method:'wallet_switchEthereumChain',params:[{chainId:CFG.chainHex}]})}
+    catch(e){if(e&&e.code===4902){await eth.request({method:'wallet_addEthereumChain',params:[{chainId:CFG.chainHex,chainName:CFG.name,rpcUrls:[CFG.rpc],nativeCurrency:{name:'Ether',symbol:'ETH',decimals:18},blockExplorerUrls:[CFG.explorer]}]})}else{throw e}}
+    }
     say(snapN?'Confirm in your wallet: '+priceText(snapN)+' pin fee plus network gas, for '+snapN+(snapN===1?' pin.':' pins.'):'Confirm in your wallet. 0 ETH mint fee. You pay network gas.');
     var data=CFG.selector+snapPins.padStart(64,'0');
     var tx={from:from,to:CFG.address,data:data};if(snapWei>0n)tx.value='0x'+snapWei.toString(16);
+    step='checking your previous commitment';
     if(await hasPendingCommit(eth,from,CFG.chainHex,CFG.address,CFG.commitsSelector)){say('Your previous roll must be revealed before starting another.');keepRec(from,{stage:'committed',hash:null,epoch:CFG.epoch});return revealLoop(from,null)}
+    step='requesting transaction approval';
     submitting=true;var hash=await eth.request({method:'eth_sendTransaction',params:[tx]});
     keepRec(from,{stage:'sent',hash:hash,epoch:CFG.epoch,pins:snapPins});show('Transaction sent. Waiting for confirmation.',hash);
     await waitCommit(from,hash);
-  }catch(e){say(walletError(e,submitting));lock(false);update()}
+  }catch(e){var message=walletError(e,submitting);if(message.indexOf('The wallet could not complete')===0)message+=' Failed while '+step+'.';say(message);lock(false);update()}
 });
 resume();
 })();
