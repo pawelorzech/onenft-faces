@@ -709,7 +709,11 @@ btn.addEventListener('click',async function(){
     var data=CFG.selector+snapPins.padStart(64,'0');
     var tx={from:from,to:CFG.address,data:data};if(snapWei>0n)tx.value='0x'+snapWei.toString(16);
     step='checking your previous commitment';
-    if(await hasPendingCommit(eth,from,CFG.chainHex,CFG.address,CFG.commitsSelector)){say('Your previous roll must be revealed before starting another.');keepRec(from,{stage:'committed',hash:null,epoch:CFG.epoch});return revealLoop(from,null)}
+    if(await hasPendingCommit(eth,from,CFG.chainHex,CFG.address,CFG.commitsSelector,async function(){
+      var latest=await status(from,false);
+      if(!latest||latest.state==='rpc-down'||typeof latest.address!=='string'||latest.address.toLowerCase()!==from.toLowerCase()||!Number.isSafeInteger(latest.revealBlock)||latest.revealBlock<0||typeof latest.rolledToday!=='boolean'||typeof latest.soldOut!=='boolean')throw new Error('The commitment could not be checked. No transaction was sent.');
+      return latest.revealBlock>0||latest.rolledToday;
+    })){say('Your previous roll must be revealed before starting another.');keepRec(from,{stage:'committed',hash:null,epoch:CFG.epoch});return revealLoop(from,null)}
     step='requesting transaction approval';
     submitting=true;var hash=await eth.request({method:'eth_sendTransaction',params:[tx]});
     keepRec(from,{stage:'sent',hash:hash,epoch:CFG.epoch,pins:snapPins});show('Transaction sent. Waiting for confirmation.',hash);

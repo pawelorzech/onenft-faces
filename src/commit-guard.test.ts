@@ -7,7 +7,7 @@ test("browser refuses a previous day's pending commit regardless of today's allo
   const calls: string[] = [];
   const provider = { request: async ({method}: {method: string}) => { calls.push(method); return method === "eth_chainId" ? "0x2105" : method === "eth_accounts" ? [who] : "0x" + "0".repeat(64) + "1".padStart(64,"0") + "0".repeat(64); } };
   expect(await guard(provider,who,"0x2105",contract,"0x12345678")).toBe(true);
-  expect(calls).toEqual(["eth_chainId","eth_accounts","eth_call"]);
+  expect(calls).toEqual(["eth_chainId","eth_accounts","eth_call","eth_chainId","eth_accounts"]);
   provider.request = async ({method}) => method === "eth_chainId" ? "0x2105" : method === "eth_accounts" ? [who] : "0x" + "0".repeat(192);
   expect(await guard(provider,who,"0x2105",contract,"0x12345678")).toBe(false);
 });
@@ -28,10 +28,26 @@ test("the generated builder checks a commitment before send and resumes it acros
   const calls:string[]=[];let accountReads=0,checks=0;
   const provider={request:async({method}:{method:string})=>{calls.push(method);if(method==="eth_accounts")return ++accountReads===1?[]:[who];if(method==="eth_requestAccounts")return[who];if(method==="eth_chainId")return"0x2105";if(method==="eth_call")return"0x"+"0".repeat(64)+"1".padStart(64,"0")+"0".repeat(64);return null;}};
   const storage=new Map<string,string>();
-  runInNewContext(script,{window:{ethereum:provider},document:{getElementById:node,querySelectorAll:()=>[],querySelector:()=>null},localStorage:{getItem:(k:string)=>storage.get(k)??null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},fetch:async()=>({ok:true,json:async()=>++checks===1?{state:"none",revealBlock:0,rolledToday:false,soldOut:false}:{state:"no-keeper",revealBlock:101,epoch:1}}),setTimeout,clearTimeout,AbortController,URLSearchParams,console});
+  runInNewContext(script,{window:{ethereum:provider},document:{getElementById:node,querySelectorAll:()=>[],querySelector:()=>null},localStorage:{getItem:(k:string)=>storage.get(k)??null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},fetch:async()=>({ok:true,json:async()=>++checks===1?{state:"none",revealBlock:0,rolledToday:false,soldOut:false}:{state:"no-keeper",address:who,revealBlock:101,epoch:1,rolledToday:false,soldOut:false}}),setTimeout,clearTimeout,AbortController,URLSearchParams,console});
   await node("roll").handlers.get("click")();
-  expect(calls).toContain("eth_call");
+  expect(calls).not.toContain("eth_call");
   expect(calls).not.toContain("eth_sendTransaction");
   expect(node("msg").textContent).toContain("reveal service is not running");
   expect(storage.size).toBe(1);
+});
+
+
+test("server commitment read is revalidated against wallet session before approval", async () => {
+  for (const change of ["account", "network"]) {
+    let changed=false;
+    const provider={request:async({method}:{method:string})=>method==="eth_chainId"?(changed&&change==="network"?"0x1":"0x2105"):[changed&&change==="account"?contract:who]};
+    await expect(guard(provider,who,"0x2105",contract,"0x12345678",async()=>{changed=true;return false;})).rejects.toThrow();
+  }
+});
+
+test("server read preserves previous-day pending commits and fails closed on unreadable state", async () => {
+  const provider={request:async({method}:{method:string})=>method==="eth_chainId"?"0x2105":[who]};
+  expect(await guard(provider,who,"0x2105",contract,"0x12345678",async()=>true)).toBe(true);
+  await expect(guard(provider,who,"0x2105",contract,"0x12345678",async()=>{throw new Error("unavailable");})).rejects.toThrow();
+  await expect(guard(provider,who,"0x2105",contract,"0x12345678",async()=>null as any)).rejects.toThrow();
 });

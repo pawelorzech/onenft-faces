@@ -23,7 +23,7 @@ async function resume(states: object[], receipt: object | null = null, click = f
     window: { ethereum: { on() {}, async request({ method }: { method: string }) { calls.push(method); if(method===failMethod)throw new Error('provider internal error'); if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [account]; if(click && method==='eth_chainId')return '0x2105'; if(click && method==='eth_call')return '0x'+'0'.repeat(192); if(click && method==='eth_sendTransaction')throw Object.assign(new Error('user rejected'), {code:4001}); throw new Error('Wallet is on Ethereum, not Base'); } } },
     AbortController, location,
     setTimeout: (f: () => void, ms: number) => { if (ms !== 10000) timers.push(f); return 1; }, clearTimeout() {},
-    fetch: async (url: string) => { calls.push(url); return { ok: true, json: async () => url.startsWith('https:') ? { result: receipt } : states[Math.min(statusIndex++, states.length - 1)] }; },
+    fetch: async (url: string) => { calls.push(url); return { ok: true, json: async () => url.startsWith('https:') ? { result: receipt } : { address: account, revealBlock: 0, rolledToday: false, soldOut: false, ...states[Math.min(statusIndex++, states.length - 1)] } }; },
   });
   for (let i = 0; i < 30; i++) await Promise.resolve();
   if(click)await elements.get('roll').handlers.get('click')();
@@ -83,9 +83,18 @@ test('wallet already on Base is never asked to switch to Base again', async () =
 });
 
 
-test('unknown wallet errors identify the failed step without exposing provider details', async () => {
+test('a wallet that rejects eth_call can still reach transaction approval', async () => {
   const r = await resume([{ state: 'none', rolledToday: false }], null, true, 'eth_call');
-  expect(r.elements.get('msg').textContent).toContain('Failed while checking your previous commitment.');
-  expect(r.elements.get('msg').textContent).not.toContain('provider internal error');
-  expect(r.calls).not.toContain('eth_sendTransaction');
+  expect(r.elements.get('msg').textContent).toContain('cancelled');
+  expect(r.calls).not.toContain('eth_call');
+  expect(r.calls).toContain('eth_sendTransaction');
+});
+
+
+test('a failed or malformed final API check never reaches transaction approval', async () => {
+  for (const bad of [{state:'rpc-down'}, {state:'none',revealBlock:null}, {state:'none',address:'wrong-wallet'}]) {
+    const r = await resume([{state:'none'}, bad], null, true);
+    expect(r.calls).not.toContain('eth_sendTransaction');
+    expect(r.elements.get('msg').textContent).toContain('The chain could not verify your previous roll');
+  }
 });

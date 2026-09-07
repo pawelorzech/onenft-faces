@@ -31,6 +31,7 @@ export function walletError(error: unknown, sending = false): string {
   "0x3d0c5c90": "The reveal block is unavailable. Check the roll again so the reveal service can recover it."
 };
   for (const selector of data) if (reasons[selector]) return reasons[selector];
+  if (/the commitment could not be checked/.test(text)) return "The chain could not verify your previous roll. No transaction was sent. Try again in a minute.";
   if (codes.includes(4001) || /user rejected|user denied|request rejected/.test(text)) return "You cancelled the request in your wallet. Open the wallet and approve it when you are ready.";
   if (codes.includes(-32002) || /already pending|request pending/.test(text)) return "Your wallet is waiting for an answer. Open it and approve or dismiss the pending request before trying again.";
   if (/insufficient funds|insufficient balance|exceeds balance/.test(text)) return "There is not enough ETH on this network for the fee and gas. Add ETH on Base (Base Sepolia for the test site), then try again.";
