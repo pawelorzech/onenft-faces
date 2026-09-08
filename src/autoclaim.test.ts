@@ -219,3 +219,50 @@ test("an old renew with a known unresolved transaction is not sent again", async
   expect((await k.revealFor(A)).state).toBe("unknown");
   expect(w.renews.length).toBe(1);
 });
+
+test("public status reads for 20000 unused addresses retain no observations", async () => {
+  const { deps, w } = world({ revealBlock: 0, lastRollEpoch: 0 });
+  const k = new Keeper(deps);
+  for (let i = 1; i <= 20000; i++) {
+    await k.revealFor(`0x${i.toString(16).padStart(40, "0")}` as Address, false);
+  }
+  // Inspect actual retained storage: filtering empty records in summary alone is not a fix.
+  expect((k as any).observed.size).toBe(0);
+  expect(k.summary().observedCommitments).toBe(0);
+  expect(w.sends).toHaveLength(0);
+});
+
+test("direct status reads remove resolved observations without waiting for a keeper cycle", async () => {
+  const { deps, w } = world();
+  const k = new Keeper(deps);
+  await k.revealFor(A, false);
+  expect(k.summary().observedCommitments).toBe(1);
+  w.revealBlock = 0;
+  await k.revealFor(A, false);
+  expect((k as any).observed.size).toBe(0);
+});
+
+test("observation capacity and expiry do not evict unresolved transactions or permit duplicate sends", async () => {
+  const { deps, w } = world();
+  const k = new Keeper(deps, { maxObservations: 2, observationTtlMs: 100 });
+  const sent = await k.revealFor(A);
+  for (let i = 1; i <= 4; i++) await k.revealFor(`0x${i.toString(16).padStart(40, "0")}` as Address, false);
+  expect((k as any).observed.size).toBe(2);
+  expect(k.summary()).toMatchObject({ observedCommitments: 2, observationsLimited: true });
+  expect(k.pending.size).toBe(1);
+  w.now += 101;
+  expect(k.summary().observedCommitments).toBe(0);
+  expect((k as any).observed.size).toBe(0);
+  expect(k.pending.size).toBe(1);
+  expect((await k.revealFor(A)).hash).toBe(sent.hash);
+  expect(w.sends).toHaveLength(1);
+});
+
+test("a successful reveal receipt clears its stale observation immediately", async () => {
+  const { deps, mined } = world();
+  const k = new Keeper(deps);
+  const sent = await k.revealFor(A);
+  mined(sent.hash!, 42);
+  expect((await k.revealFor(A)).state).toBe("confirmed");
+  expect(k.summary().observedCommitments).toBe(0);
+});

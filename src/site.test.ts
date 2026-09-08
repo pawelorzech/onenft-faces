@@ -218,3 +218,12 @@ test("terms and privacy pages say what this contract does, and the home page lin
   expect(h).toContain("Fully on-chain, 5 of 5 on OnChainChecker");
   expect(h).toContain("https://onchainchecker.xyz/collection/base-sepolia/0x3333333333333333333333333333333333333333/1");
 });
+
+test("roll instructions explain unresolved commitments and order-dependent one-of-one allocation", () => {
+  const h = howPage(fakeChain(), 20701);
+  expect(h).toContain("Always finish your pending roll before starting another, even after midnight UTC");
+  expect(h).toContain("One-of-one allocation does depend on reveal order");
+  expect(h).not.toContain("the order of reveals changes nothing");
+  expect(h).not.toContain("a commit is never lost");
+  expect(h).toContain("seed = keccak(blockhash(commitBlock + 1), wallet, pins, commitBlock) as u64");
+});

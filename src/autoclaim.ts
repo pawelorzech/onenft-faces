@@ -79,19 +79,26 @@ export type KeeperOptions = {
   maxAttempts?: number;
   /** Blocks back from the head the Rolled log is searched when a token must be found for a wallet. About a day on Base. */
   logWindow?: bigint;
+  /** Diagnostic observations only; never limits transaction tracking. */
+  maxObservations?: number;
+  observationTtlMs?: number;
 };
 
 export class Keeper {
   readonly pending = new Map<string, Pending>();
   private treasuryFlight: Promise<void> | null = null;
-  private readonly observed = new Map<string, RollCheck>();
+  private readonly observed = new Map<string, { check: RollCheck; expiresAt: number }>();
+  private observationsLimited = false;
   private chainPending: number | null = null;
   private observedAt: number | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   private readonly inflight = new Map<string, Promise<RevealResult>>();
   private readonly o: Required<KeeperOptions>;
   constructor(private readonly deps: KeeperDeps, o: KeeperOptions = {}) {
-    this.o = { unknownAfterMs: 90_000, maxAttempts: 3, logWindow: 45_000n, ...o };
+    this.o = { unknownAfterMs: 90_000, maxAttempts: 3, logWindow: 45_000n, maxObservations: 10_000, observationTtlMs: 300_000, ...o };
+    if (!Number.isSafeInteger(this.o.maxObservations) || this.o.maxObservations < 1 || !Number.isFinite(this.o.observationTtlMs) || this.o.observationTtlMs <= 0) {
+      throw new RangeError("Observation capacity and lifetime must be positive finite values");
+    }
   }
 
   /** Every send goes through here, one after another: the account's nonce is shared. */
@@ -120,7 +127,7 @@ export class Keeper {
     let check: RollCheck;
     try {
       check = await this.deps.canRoll(who);
-      this.observed.set(key, check);
+      this.observe(key, check);
     } catch (e) {
       return { state: "rpc-down", address: who, reason: scrubError(e) };
     }
@@ -181,6 +188,7 @@ export class Keeper {
       if (r?.status === "success") {
         // The contract still shows the commit only because this read raced the block; the receipt wins.
         this.pending.delete(key);
+        this.observed.delete(key);
         const id = this.deps.tokenOf(r, who);
         return id === null ? { ...base, state: "none", hash: p.hash } : { ...base, state: "confirmed", hash: p.hash, tokenId: id };
       }
@@ -271,12 +279,39 @@ export class Keeper {
     await this.treasury(state);
   }
 
-  /** What a status page may show: counts only, never hashes with keys. */
-  summary() {
-    const checks = [...this.observed.values()];
-    const outstanding = checks.filter(c => c.revealBlock > 0);
-    return { chainPending: this.chainPending, observedAt: this.observedAt, observedCommitments: outstanding.length, expiredCommitments: outstanding.filter(c => c.lastRevealBlock > 0 && c.head > c.lastRevealBlock).length, oldestOverdueBlocks: Math.max(0, ...outstanding.map(c => c.head - c.revealBlock)), pendingGap: this.chainPending === null ? null : this.chainPending - outstanding.length, pending: this.pending.size, reveals: [...this.pending.values()].filter((p) => p.kind === "reveal").length };
+  private pruneObservations(): void {
+    const now = this.deps.now();
+    // Refreshing an entry moves it to the end, so expiry order is insertion order.
+    for (const [key, value] of this.observed) {
+      if (value.expiresAt > now) break;
+      this.observed.delete(key);
+      this.observationsLimited = true;
+    }
   }
+
+  private observe(key: string, check: RollCheck): void {
+    this.pruneObservations();
+    this.observed.delete(key);
+    if (check.revealBlock === 0) return;
+    if (this.observed.size >= this.o.maxObservations) {
+      this.observed.delete(this.observed.keys().next().value!);
+      this.observationsLimited = true;
+    }
+    this.observed.set(key, { check, expiresAt: this.deps.now() + this.o.observationTtlMs });
+  }
+
+  /** Bounded diagnostic sample, separate from the authoritative pending transaction table. */
+  summary() {
+    this.pruneObservations();
+    let expiredCommitments = 0, oldestOverdueBlocks = 0, reveals = 0;
+    for (const { check } of this.observed.values()) {
+      if (check.lastRevealBlock > 0 && check.head > check.lastRevealBlock) expiredCommitments++;
+      oldestOverdueBlocks = Math.max(oldestOverdueBlocks, check.head - check.revealBlock);
+    }
+    for (const p of this.pending.values()) if (p.kind === "reveal") reveals++;
+    return { chainPending: this.chainPending, observedAt: this.observedAt, observedCommitments: this.observed.size, expiredCommitments, oldestOverdueBlocks, observationsLimited: this.observationsLimited, pendingGap: this.chainPending === null ? null : this.chainPending - this.observed.size, pending: this.pending.size, reveals };
+  }
+
 }
 
 // ---- the real keeper, wired to viem ----
