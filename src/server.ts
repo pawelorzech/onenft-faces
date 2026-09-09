@@ -76,6 +76,7 @@ async function route(url: URL, req: Request): Promise<Response> {
     const s = chainStatus();
     return json({ ok: !s.configured || s.known, epoch, chain: s, keeper: keeperInfo() }, 0, !s.configured || s.known ? 200 : 503);
   }
+  if (path === "/robots.txt") return text("User-agent: *\nAllow: /\nDisallow: /api/\n");
   if (path === "/spec.json") return json(specJson(), 3600);
   if (path === "/today.svg") return svg(svgOf(faceOfDay(epoch)), false);
   if (path === "/today.png") return png(cardPng(`day${epoch}`, "faces", "roll yours", faceOfDay(epoch), true), false);

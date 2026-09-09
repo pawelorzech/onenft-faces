@@ -50,8 +50,8 @@ export function ownerLink(a: string, names: Names): string {
   return `<a href="${holderHref(a)}">${label(a, names)}</a>`;
 }
 export function openseaCollection(chain: ChainState): string {
-  // The second contract's OpenSea collection has no slug yet; the first token's page lists the collection.
-  return chain.chainId === 8453 ? `https://opensea.io/assets/base/${chain.address}/1` : `https://testnets.opensea.io/assets/base_sepolia/${chain.address}`;
+  if (process.env.OPENSEA_SLUG) return `https://opensea.io/collection/${process.env.OPENSEA_SLUG}`;
+  return chain.chainId === 8453 ? "https://opensea.io/collection/faces-onenft-click-973029926" : `https://testnets.opensea.io/assets/base_sepolia/${chain.address}`;
 }
 export function opensea(chain: ChainState, id: number): string {
   return chain.chainId === 8453 ? `https://opensea.io/assets/base/${chain.address}/${id}` : `https://testnets.opensea.io/assets/base_sepolia/${chain.address}/${id}`;
@@ -88,7 +88,7 @@ export function fmtLeft(s: number): string {
   return h === 0 ? `${m} min` : `${h} h ${m} min`;
 }
 export function dateOf(epoch: number): string {
-  return new Date(epoch * 86400 * 1000).toISOString().slice(0, 10);
+  return new Date(epoch * 86400 * 1000).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
 }
 /** The pin rule in one sentence, from the constants, so no page can drift from the contract. */
 export function pinRule(): string {
@@ -242,17 +242,21 @@ footer nav,.nav{display:flex;gap:6px 20px;flex-wrap:wrap}
 .step .gone{display:inline-flex;min-width:44px;min-height:44px;box-shadow:0 0 0 1px var(--line);opacity:.35}
 footer nav a,.nav a,.top nav a,.sitenav a{display:inline-flex;align-items:center;min-height:44px}
 .prose{max-width:680px;padding:38px 34px;display:flex;flex-direction:column;gap:22px}
-.prose h2{margin-top:22px}
+.prose h1,.prose h2{font-weight:800;font-size:30px;line-height:1;letter-spacing:-.03em;margin:22px 0 0}
+.prose h1:first-child,.prose h2:first-child{margin-top:0}
 .prose p{margin:0}
 .prose code{font-family:ui-monospace,Menlo,monospace;font-size:.92em}
 .prose pre{margin:0;padding:18px;background:var(--soft);overflow-x:auto;font-size:14px;line-height:1.5}
 .single{padding:38px 34px;display:flex;flex-direction:column;gap:22px;max-width:760px}
+.single h1,.single h2{font-weight:800;font-size:34px;line-height:1;letter-spacing:-.03em;margin:0}
 .single .face{width:100%;max-width:512px;aspect-ratio:1;box-shadow:0 0 0 1px var(--line)}
 .single .face svg{display:block;width:100%;height:100%}
 .num{font-weight:800;font-size:62px;line-height:.95;letter-spacing:-.03em}
 .top{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
 .top nav{display:flex;gap:4px 18px;flex-wrap:wrap;font-size:16px;color:var(--muted)}
 .wide{padding:38px 34px;display:flex;flex-direction:column;gap:28px;max-width:1180px}
+.wide h1,.wide h2{font-weight:800;font-size:34px;line-height:1;letter-spacing:-.03em;margin:0}
+.wide h3{font-weight:700;font-size:20px;margin:0}
 .wide p{margin:0}
 .strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
 .strip a,.strip div{text-decoration:none}
@@ -348,7 +352,7 @@ const ANALYTICS = UMAMI_URL && UMAMI_WEBSITE_ID ? `<script defer src="${esc(UMAM
 const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Newsreader:opsz,wght@6..72,400&display=swap">`;
 const DESC = `One face per wallet each UTC day, rolled on chain on Base. Pin traits for a fee or leave them to chance. The collection ends at ${num(MAX_SUPPLY)} faces.`;
 
-export function layout(title: string, p: Colors, body: string, image = "/today.png", path = "/", description?: string): string {
+export function layout(title: string, p: Colors, body: string, image = "/today.png", path = "/", description?: string, index = true): string {
   const alt = title.replace(/ \| .*$/, "") + " on " + SITE;
   return `<!doctype html>
 <html lang="en">
@@ -358,6 +362,7 @@ export function layout(title: string, p: Colors, body: string, image = "/today.p
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(description ?? DESC)}">
 <meta name="theme-color" content="${p.bg}">
+${index ? "" : '<meta name="robots" content="noindex">'}
 <link rel="icon" href="/today.svg" type="image/svg+xml">
 <link rel="canonical" href="https://${SITE}${esc(path)}">
 <meta property="og:title" content="${esc(title)}">
@@ -796,6 +801,10 @@ export function rolledBy(chain: ChainState, id: number, names: Names, link = fal
   return `rolled by ${link ? ownerLink(roll.to, names) : label(roll.to, names)}`;
 }
 
+export function footer(chain?: ChainState | null): string {
+  return `<footer><span>This is not an investment and never will be. Images are CC0. One of the collections at <a href="https://${PARENT}">${PARENT}</a>.</span><nav aria-label="Footer">${menu([[`https://${PARENT}`, "All collections"]])}${chain ? `<a href="${openseaCollection(chain)}">OpenSea</a><a href="${explorer(chain.chainId)}/address/${chain.address}">Basescan</a>` : ""}<a href="${REPO}">Code</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></nav></footer>`;
+}
+
 /**
  * The home page. The sidebar carries the name, the title and one sentence; the
  * builder comes next with the preview, the price and the roll button together,
@@ -819,7 +828,6 @@ export function homePage(chain: ChainState | null, epoch: number, names: Names =
     }
   }
   const badge = chain && chain.chainId !== 8453 ? ` <span class="testnet">${chainName(chain.chainId)} testnet</span>` : "";
-  // The clock, never a cached chain read.
   const left = 86400 - (Math.floor(Date.now() / 1000) % 86400);
   const soldOut = chain ? chain.totalSupply + chain.pending >= MAX_SUPPLY : false;
   const keep = `<dl class="keep" id="keep">${GALLERY_ORDER.map((key) => `<dt>${GALLERY_LABELS[key].toLowerCase()}</dt><dd data-keep="${key}"><span class="luck">luck decides</span></dd>`).join("")}</dl>`;
@@ -852,6 +860,7 @@ ${crumb()}
 <main id="main">
 ${staleNote(status)}
 ${NEW_DAY}
+<nav class="sitenav small" aria-label="Site">${menu()}</nav>
 <section class="builder" aria-labelledby="build-h">
 <h2 id="build-h" class="syne" hidden>Build your roll</h2>
 <div class="stage"><div class="preview px"><img id="preview" src="/preview.svg?p=ffffffffffffffffffffffffffffffff" alt="Your pins on a grey stand-in; grey parts are luck's" width="512" height="512"></div>
@@ -862,10 +871,9 @@ ${keep}</div>
 <div class="galleries">${galleries()}</div>
 </section>
 ${counts}
-<p class="small" style="line-height:1.7">The image and its rules live in the contract. This site only shows them.${chain ? `<br>Contract <a href="${explorer(chain.chainId)}/address/${chain.address}">${shortAddr(chain.address)}</a> on ${chainName(chain.chainId)}. Every face pins its renderer, so a rolled face keeps its image. <a href="${openseaCollection(chain)}">Collection on OpenSea</a>. <a href="${onChainChecker(chain)}">Fully on-chain, 5 of 5 on OnChainChecker</a>.` : ""}</p>
-<nav class="sitenav small" aria-label="Site">${menu()}</nav>
+<p class="small" style="line-height:1.7;padding:16px 34px;margin:0">The image and its rules live in the contract. This site only shows them.${chain ? `<br>Contract <a href="${explorer(chain.chainId)}/address/${chain.address}">${shortAddr(chain.address)}</a> on ${chainName(chain.chainId)}. Every face pins its renderer, so a rolled face keeps its image. <a href="${openseaCollection(chain)}">Collection on OpenSea</a>. <a href="${onChainChecker(chain)}">Fully on-chain, 5 of 5 on OnChainChecker</a>.` : ""}</p>
 ${rows.length ? rows.join("\n") : chain ? `<p class="lead" style="padding:34px">Nobody has rolled yet. The first face is yours to make.</p>` : ""}
-<footer><span>This is not an investment and never will be. Images are CC0. One of the collections at <a href="https://${PARENT}">${PARENT}</a>.</span><nav aria-label="Footer">${menu([[`https://${PARENT}`, "All collections"]])}${chain ? `<a href="${openseaCollection(chain)}">OpenSea</a><a href="${explorer(chain.chainId)}/address/${chain.address}">Basescan</a>` : ""}<a href="${REPO}">Code</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></nav></footer>
+${footer(chain)}
 </main>
 </div>
 ${builderScript(chain)}
@@ -892,7 +900,7 @@ ${topBar(`Face #${id}`)}
 ${staleNote(status)}
 <p class="small">Owner checked at <time datetime="${ownership.readAt}">${ownership.readAt.replace("T", " ").replace(/\.\d+Z$/, " UTC")}</time>.${ownership.stale ? " Ownership may have changed." : ""}${owner ? ` <a href="/${owner}?refresh=1">Refresh holdings</a>` : ""}</p>
 <div class="face px">${stripSize(svgOf(t))}</div>
-<div><div class="head"><h2 class="num syne" style="margin:0">#${id}</h2><nav class="step" aria-label="Neighbouring faces">${id > 1 ? `<a rel="prev" href="/face/${id - 1}" aria-label="Face #${id - 1}" title="Face #${id - 1}, left arrow key">&larr;</a>` : `<span class="gone" aria-hidden="true"></span>`}${id < chain.totalSupply ? `<a rel="next" href="/face/${id + 1}" aria-label="Face #${id + 1}" title="Face #${id + 1}, right arrow key">&rarr;</a>` : `<span class="gone" aria-hidden="true"></span>`}</nav></div><p class="lead">${held || "holder unknown"}${pinsN ? `, ${pinsN} ${plural(pinsN, "pin", "pins")} (${Object.keys(pins).map((k) => esc(GALLERY_LABELS[k]?.toLowerCase() ?? k)).join(", ")})` : ", no pins"}${f.one !== 255 ? ", one of one" : ""}</p></div>
+<div><div class="head"><h1 class="num syne" style="margin:0">#${id}</h1><nav class="step" aria-label="Neighbouring faces">${id > 1 ? `<a rel="prev" href="/face/${id - 1}" aria-label="Face #${id - 1}" title="Face #${id - 1}, left arrow key">&larr;</a>` : `<span class="gone" aria-hidden="true"></span>`}${id < chain.totalSupply ? `<a rel="next" href="/face/${id + 1}" aria-label="Face #${id + 1}" title="Face #${id + 1}, right arrow key">&rarr;</a>` : `<span class="gone" aria-hidden="true"></span>`}</nav></div><p class="lead">${held || "holder unknown"}${pinsN ? `, ${pinsN} ${plural(pinsN, "pin", "pins")} (${Object.keys(pins).map((k) => esc(GALLERY_LABELS[k]?.toLowerCase() ?? k)).join(", ")})` : ", no pins"}${f.one !== 255 ? ", one of one" : ""}</p></div>
 ${roll ? `<p class="small">${rolled ? rolled[0].toUpperCase() + rolled.slice(1) : "Rolled"} on ${dateOf(Math.floor(roll.at / 86400))}${roll.paid ? `, pin fee ${eth(roll.paid)}` : ""}, <a href="${explorer(chain.chainId)}/tx/${roll.tx}">transaction</a>.</p>` : ""}
 ${f.one !== 255 ? `<p class="small">A one of one is a full drawing. It kept the pinned background and ground colour, if any, and replaced every other pin.</p>` : ""}
 ${traitList(t)}
@@ -902,6 +910,7 @@ ${downloadBar(id, p.bg)}
 <nav class="nav small" aria-label="Links"><a href="${opensea(chain, id)}">OpenSea</a><a href="${explorer(chain.chainId)}/nft/${chain.address}/${id}">Basescan</a><a href="/face/${id}.png${IMG_Q}">Link card</a><a href="/api/face/${id}">JSON</a></nav>
 <nav class="share" aria-label="Share"><a href="https://warpcast.com/~/compose?text=${text}&embeds[]=${encodeURIComponent(url)}">Share on Farcaster</a><a href="https://x.com/intent/post?text=${text}&url=${encodeURIComponent(url)}">Share on X</a></nav>
 <details><summary class="small">Put this face on your page</summary><pre class="snip">${snippet}</pre><p class="small">CC0. No credit needed.</p></details>
+${footer(chain)}
 </main>
 ${downloadScript()}
 ${STEP_KEYS}`;
@@ -912,7 +921,7 @@ export function howPage(chain: ChainState | null, epoch: number): string {
   const p = groundOf(pageTraits(chain, epoch));
   const body = `<main class="prose" id="main">
 ${topBar("How it works")}
-<h2 class="syne">One roll a day, and what you may pin</h2>
+<h1 class="syne">One roll a day, and what you may pin</h1>
 <p><strong>The roll.</strong> Each wallet may roll once per UTC day while supply remains, in two steps. <code>commit</code> spends your day, fixes your pins and pays the pin fee. Two blocks later <code>reveal</code> mixes the hash of the block after your commit with your address, your pins and the commit block into a 64-bit seed, the seed determines the ordinary traits: seven layers and five colours. The one-of-one result also depends on the remaining pool and supply when the reveal executes. Anyone may reveal for anyone. This site's keeper does it for you, so you sign once; a commit nobody reveals waits, and you can reveal it from your own wallet. A roll without pins has no mint fee; you pay the network gas of one transaction.</p>
 <p><strong>The pins.</strong> ${MAX_PINS} things can be pinned: the seven layers (background, top, head, eyes, mouth, accessory, hair or hat) and five colours (skin, hair, ground, top, accent). Layers pin to common or uncommon items only; the pinnable skins are the eleven human tones; the fantasy tones are rare or legendary and come only from luck. Every other colour can be pinned. ${pinRule()[0].toUpperCase() + pinRule().slice(1)}: ${PIN_PRICES_WEI.slice(1, 4).map((w) => ethOf(w)).join(", ")} ETH for one, two, three pins. 95 percent of the fee goes to the author, 5 percent to the keeper wallet that pays gas for reveals and the treasury's rolls. Rare and legendary traits cannot be pinned.</p>
 <p><strong>The layers.</strong> ${SLOTS.map((s) => `${s.items.length} ${s.trait.toLowerCase()}`).join(", ")}. Every item has a tier: common, uncommon, rare, legendary. The weight tables live in the contract; <a href="/rarity">the rarity page</a> lists each item's odds per roll. Skin, hair colour, top colour, ground and accent colour are drawn on top of that. ${num(combinations())} combinations before the one of ones.</p>
@@ -936,17 +945,18 @@ skin = walk(SKIN_WEIGHTS, draw(7)), or the pin; hair colour, top colour, ground,
 lucky = draw(12) < pool size * 10000 / tokens left; one = pool[draw(13) mod pool size]</code></pre>
 <p>Everything here is CC0. If you build on it, write to me.</p>
 <p class="small"><a href="/">Back to the roll</a>. Every collection: <a href="https://${PARENT}">${PARENT}</a>.</p>
+${footer(chain)}
 </main>`;
   return layout(`How it works | ${SITE}`, p, body, "/today.png", "/how");
 }
 
 export function notFound(chain: ChainState | null, epoch: number, why?: string): string {
   const p = groundOf(pageTraits(chain, epoch));
-  return layout(`Not found | ${SITE}`, p, `<main class="single" id="main">${topBar("Not found")}<h2 class="syne">Not found</h2><p class="lead">${why ? esc(why) : chain ? `Faces run from 1 to ${chain.totalSupply}.` : "Nothing here."}</p><a href="/">Back to the roll</a></main>`, "/today.png", "/");
+  return layout(`Not found | ${SITE}`, p, `<main class="single" id="main">${topBar("Not found")}<h1 class="syne" style="font-size:34px;margin:0">Not found</h1><p class="lead">${why ? esc(why) : chain ? `Faces run from 1 to ${chain.totalSupply}.` : "Nothing here."}</p><p><a href="/">Back to the roll</a></p>${footer(chain)}</main>`, "/today.png", "/", undefined, false);
 }
 export function chainDown(chain: ChainState | null, epoch: number, why = "This page needs the chain, and the chain did not answer. Try again in a minute."): string {
   const p = groundOf(pageTraits(chain, epoch));
-  return layout(`The chain did not answer | ${SITE}`, p, `<main class="single" id="main">${topBar("Unavailable")}<h2 class="syne">The chain did not answer</h2><p class="lead">${esc(why)}</p><a href="/">Back to the roll</a></main>`, "/today.png", "/");
+  return layout(`The chain did not answer | ${SITE}`, p, `<main class="single" id="main">${topBar("Unavailable")}<h1 class="syne" style="font-size:34px;margin:0">The chain did not answer</h1><p class="lead">${esc(why)}</p><p><a href="/">Back to the roll</a></p>${footer(chain)}</main>`, "/today.png", "/", undefined, false);
 }
 
 export function nameHeading(name: string): string {
@@ -969,7 +979,7 @@ export function legalPage(kind: "terms" | "privacy", chain: ChainState | null, e
   const contact = `<p>Questions go to <a href="${REPO}/issues">the repository</a> or to <a href="https://x.com/onenftclick">@onenftclick</a>.</p>`;
   const terms = `<main class="prose" id="main">
 ${topBar("Terms")}
-<h2 class="syne">Terms of use</h2>
+<h1 class="syne">Terms of use</h1>
 <p class="small">Last changed ${LEGAL_UPDATED}.</p>
 <p><strong>What this is.</strong> This site shows tokens that a contract on the Base chain mints and draws. The site reads the chain and nothing else. It holds no keys, no funds and no account of yours.</p>
 <p><strong>What you sign, you send.</strong> A roll takes two steps. You sign the commit, which spends your day, fixes your pins and pays the pin fee. The reveal comes from two blocks later, and anyone may send it; the site's keeper sends it for you, so you sign once. You can also reveal from your own wallet. You pay the network gas of what you sign. A transaction that fails still costs gas. Any fee the contract takes is written on this site before you sign.</p>
@@ -979,10 +989,11 @@ ${topBar("Terms")}
 <p><strong>Licence.</strong> Images and code are CC0. Use them for anything, with or without credit.</p>
 <p><strong>Changes.</strong> These terms can change. The date at the top says when they last did.</p>
 ${contact}
+${footer(chain)}
 </main>`;
   const privacy = `<main class="prose" id="main">
 ${topBar("Privacy")}
-<h2 class="syne">Privacy</h2>
+<h1 class="syne">Privacy</h1>
 <p class="small">Last changed ${LEGAL_UPDATED}.</p>
 <p><strong>No accounts, no cookies.</strong> This site has no sign-up, sets no cookies and runs no advertising. It does not sell data, because it keeps almost none.</p>
 <p><strong>Server logs.</strong> The host keeps standard access logs: address, path, time, browser string. They exist to keep the site running and to find faults, and they are not kept longer than that needs.</p>
@@ -991,6 +1002,7 @@ ${topBar("Privacy")}
 <p><strong>Third parties.</strong> Fonts load from Google Fonts. Chain reads go through a Base RPC provider. Links lead to OpenSea, Basescan, OnChainChecker and GitHub, which have their own rules.</p>
 <p><strong>Changes.</strong> This page can change. The date at the top says when it last did.</p>
 ${contact}
+${footer(chain)}
 </main>`;
   const body = kind === "terms" ? terms : privacy;
   const title = kind === "terms" ? "Terms" : "Privacy";

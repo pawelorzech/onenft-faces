@@ -1,6 +1,6 @@
 # faces.onenft.click
 
-One face a day per wallet, rolled on chain. A collection of onenft.click, built from `~/Programowanie/onenft-chainrun` on 2026-09-05. Live at https://faces.onenft.click, contract `0x7C745F4eA367A7A3CD596219A4E428F2eA9A8C4c` on Base mainnet (second contract, 2026-09-06; the first, `0x37747e1c6221848807B2fA060dbf4Be798361752`, holds two faces and is retired) (see `docs/DEPLOYMENTS.md`). Operational identifiers that should not be public live in `CLAUDE.local.md` (gitignored).
+One face a day per wallet, rolled on chain. A collection of onenft.click, built from `~/Programowanie/onenft/chainrun` on 2026-09-05. Live at https://faces.onenft.click, contract `0x7C745F4eA367A7A3CD596219A4E428F2eA9A8C4c` on Base mainnet (second contract, 2026-09-06; the first, `0x37747e1c6221848807B2fA060dbf4Be798361752`, holds two faces and is retired) (see `docs/DEPLOYMENTS.md`). Operational identifiers that should not be public live in `CLAUDE.local.md` (gitignored).
 
 ## What this is
 
