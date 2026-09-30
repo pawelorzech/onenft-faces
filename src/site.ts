@@ -1,3 +1,4 @@
+import { pageDescription } from "./seo.ts";
 import { readChain, sendWithTimeout } from "./chain-read.ts";
 import { hasPendingCommit } from "./commit-guard.ts";
 import { walletError } from "./wallet-error.ts";
@@ -160,10 +161,14 @@ function css(p: Colors): string {
 [hidden]{display:none!important}
 html{background:var(--bg);color:var(--fg);font-family:"Newsreader",Georgia,serif;font-size:17px;line-height:1.5}
 body{margin:0;min-height:100vh}
+main,aside,.meta{min-width:0}
+p,li,dd,.crumb,.lead,.small,.wname{overflow-wrap:anywhere}
+main{scroll-margin-top:16px}
 a{color:inherit}
-a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--fg);outline-offset:3px}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--fg);outline-offset:3px}
 .skip{position:absolute;left:-999px;top:8px;background:var(--fg);color:var(--bg);padding:8px 14px;font-weight:700;z-index:9}
 .skip:focus{left:8px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 .syne{font-family:"Syne",system-ui,sans-serif}
 .page{display:grid;grid-template-columns:360px minmax(0,1fr);min-height:100vh}
 aside{border-right:1px solid var(--line);padding:38px 32px}
@@ -173,7 +178,7 @@ h1{font-weight:800;font-size:33px;line-height:.96;letter-spacing:-.045em;margin:
 h2{font-weight:800;font-size:30px;line-height:1;letter-spacing:-.03em;margin:0}
 h3{font-weight:700;font-size:18px;margin:0}
 .lead{color:var(--muted);margin:0}
-.facts{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line);max-width:1120px}
+.facts{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr));border-top:1px solid var(--line);border-left:1px solid var(--line);max-width:1120px}
 .facts li{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:18px 20px 16px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .facts .fig{font-weight:800;font-size:28px;line-height:1;letter-spacing:-.03em;white-space:nowrap}
 .facts .lab{font-size:15px;color:var(--muted);line-height:1.35}
@@ -256,12 +261,12 @@ footer nav a,.nav a,.top nav a,.sitenav a{display:inline-flex;align-items:center
 .top nav{display:flex;gap:4px 18px;flex-wrap:wrap;font-size:16px;color:var(--muted)}
 .wide{padding:38px 34px;display:flex;flex-direction:column;gap:28px;max-width:1180px}
 .wide h1,.wide h2{font-weight:800;font-size:34px;line-height:1;letter-spacing:-.03em;margin:0}
-.wide h3{font-weight:700;font-size:20px;margin:0}
+.wide h3,.wide h2.section-title{font-weight:700;font-size:20px;margin:0}
 .wide p{margin:0}
 .strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
 .strip a,.strip div{text-decoration:none}
-.strip img,.strip svg{width:100%;aspect-ratio:1;display:block;box-shadow:0 0 0 1px var(--line)}
-.strip .cap{font-size:14px;color:var(--muted);margin-top:6px}
+.strip img,.strip svg{width:100%;height:auto;aspect-ratio:1;display:block;box-shadow:0 0 0 1px var(--line)}
+.strip .cap{overflow-wrap:anywhere;font-size:14px;color:var(--muted);margin-top:6px}
 .strip .gone img{opacity:.35}
 .scroll{overflow-x:auto}
 table.tr{border-collapse:collapse;width:100%;max-width:720px;font-size:16px}
@@ -289,10 +294,11 @@ pre.snip{margin:0;padding:14px;background:var(--soft);overflow-x:auto;font-size:
  aside .crumb .hub{font-size:15px;font-weight:700}
 }
 .whobox{display:flex;flex-direction:column;gap:8px}
-.wname{overflow-wrap:normal;word-break:keep-all}
+.wname{overflow-wrap:anywhere;word-break:normal}
 .who{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;max-width:720px}
 .who form{display:flex;flex-direction:column;gap:8px;flex:1;min-width:280px}
-.who form .line{display:flex;gap:12px}
+.who form .line{display:flex;gap:12px;flex-wrap:wrap}
+.who form .line .field{min-width:min(100%,180px)}
 .who label{font-size:15px;color:var(--muted)}
 .who .cta{min-height:48px;height:48px;padding:0 22px;font-size:17px;width:auto}
 .field{height:48px;padding:0 16px;border:1px solid var(--edge);background:transparent;color:var(--fg);flex:1;min-width:0;font-family:ui-monospace,Menlo,monospace;font-size:15px}
@@ -324,6 +330,7 @@ pre.snip{margin:0;padding:14px;background:var(--soft);overflow-x:auto;font-size:
  .stage .price .syne{font-size:18px}
  .stage .msg:empty{min-height:0}
 }
+@media (max-height:600px){.stage{position:static}}
 @media (min-width:1181px){.stage .sum{display:none}}
 @media (max-width:900px){
  .page{grid-template-columns:1fr}
@@ -339,7 +346,7 @@ pre.snip{margin:0;padding:14px;background:var(--soft);overflow-x:auto;font-size:
  footer,.prose,.single,.wide{padding:20px}
  .tok{grid-template-columns:1fr;gap:16px}
  .tok img{width:100%;height:auto}
- .who form{min-width:0;width:100%}
+ .who form{min-width:0;width:100%;flex-basis:100%}
 }
 @media (max-width:360px){h1{font-size:29px}.mark{font-size:17px}.stage{grid-template-columns:96px minmax(0,1fr)}.stage .preview{max-width:96px}}
 @media (prefers-reduced-motion:no-preference){.row{transition:background .15s}}
@@ -353,6 +360,7 @@ const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com"><link 
 const DESC = `One face per wallet each UTC day, rolled on chain on Base. Pin traits for a fee or leave them to chance. The collection ends at ${num(MAX_SUPPLY)} faces.`;
 
 export function layout(title: string, p: Colors, body: string, image = "/today.png", path = "/", description?: string, index = true): string {
+  description ??= pageDescription(SITE, path, DESC);
   const alt = title.replace(/ \| .*$/, "") + " on " + SITE;
   return `<!doctype html>
 <html lang="en">
@@ -424,10 +432,10 @@ if(eth.on){eth.on('accountsChanged',mark);eth.on('disconnect',function(){mark([]
 
 export function staleNote(status: ChainStatus | null | undefined): string {
   if (!status?.configured) return "";
-  if (!status.known) return `<p class="note" role="status">Collection status is unavailable. The chain did not answer. The builder works; rolling and the list of faces wait for the chain.</p>`;
+  if (!status.known) return `<p class="note" role="status">Collection status is unavailable. The chain did not answer. The builder works; rolling and the list of faces wait for the chain. <a href="">Try again</a>.</p>`;
   if (!status.stale) return "";
   const when = new Date(status.readAt!).toISOString().slice(11, 16);
-  return `<p class="note" role="status">Collection status could not be refreshed. Showing data from ${when} UTC.</p>`;
+  return `<p class="note" role="status">Collection status could not be refreshed. Showing data from ${when} UTC. <a href="">Try again</a>.</p>`;
 }
 
 export function tierTag(tier: string): string {
@@ -479,9 +487,9 @@ export const PIXEL = true;
 export const FILE_PREFIX = "faces";
 export const SIZES = [1024, 2048, 4096];
 
-export function whoBlock(chain: ChainState | null, status?: ChainStatus | null): string {
+export function whoBlock(chain: ChainState | null, status?: ChainStatus | null, value = ""): string {
   const off = !chain && status?.configured;
-  return `<div class="whobox"><div class="who">${chain ? `<button class="cta syne" id="connect" type="button">Connect wallet</button>` : ""}<form action="/go" method="get"><label for="who">Wallet address or ENS name</label><div class="line"><input class="field" id="who" name="who" placeholder="0x1234… or name.eth" autocomplete="off" spellcheck="false" required pattern="^\\s*(0x[0-9a-fA-F]{40}|[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*\\.eth)\\s*$" title="A 42-character address starting with 0x, or an ENS name ending in .eth"><button class="cta ghost syne" type="submit">View wallet</button></div></form></div>
+  return `<div class="whobox"><div class="who">${chain ? `<button class="cta syne" id="connect" type="button">Connect wallet</button>` : ""}<form action="/go" method="get"><label for="who">Wallet address or ENS name</label><div class="line"><input class="field" id="who" name="who" value="${esc(value)}" placeholder="0x1234… or name.eth" autocomplete="off" spellcheck="false" required pattern="^\\s*(0x[0-9a-fA-F]{40}|[a-zA-Z0-9\\-]+(\\.[a-zA-Z0-9\\-]+)*\\.eth)\\s*$" title="A 42-character address starting with 0x, or an ENS name ending in .eth"><button class="cta ghost syne" type="submit">View wallet</button></div></form></div>
 <p class="msg" id="msg" aria-live="polite">${off ? "The chain did not answer. Viewing a wallet needs it. Try again in a minute." : ""}</p>
 <p class="small" id="last" hidden>Last time here: <a href="/">…</a>.</p></div>`;
 }
@@ -502,11 +510,11 @@ ${walletError.toString()}
 function say(t){if(out)out.textContent=t}
 function here(a){return location.pathname.toLowerCase()===(BASE+a).toLowerCase()}
 function remember(a){try{localStorage.setItem(KEY,a)}catch(e){}}
-function offer(a,label){if(!last||here(a))return;var l=last.querySelector('a');l.href=BASE+a;l.textContent=a.slice(0,6)+'\\u2026'+a.slice(-4);last.firstChild.textContent=label+': ';last.hidden=false}
+function offer(a,label){if(!last||here(a))return;var l=last.querySelector('a');l.href=BASE+a;l.textContent=a.slice(0,6)+'…'+a.slice(-4);last.firstChild.textContent=label+': ';last.hidden=false}
 var who=null;try{who=localStorage.getItem(KEY)}catch(e){}
 if(who&&/^0x[0-9a-fA-F]{40}$/.test(who))offer(who,'Last time here');
 if(!btn)return;var eth=window.ethereum;
-if(!eth||!eth.request){btn.disabled=true;btn.textContent='No wallet detected';say('No wallet detected. Enter a public address to browse, or open this site in your wallet\\u2019s browser to connect.');return}
+if(!eth||!eth.request){btn.disabled=true;btn.textContent='No wallet detected';say('No wallet detected. Enter a public address to browse, or open this site in your wallet’s browser to connect.');return}
 function known(accs){if(!accs||!accs.length){btn.textContent='Connect wallet';btn.onclick=null;btn.disabled=false;return}var a=accs[0];remember(a);if(here(a)){btn.textContent='This is your wallet';btn.disabled=true;return}if(ENTRY){location.replace(BASE+a);return}btn.textContent='Your wallet';btn.disabled=false;btn.onclick=function(){location.href=BASE+a};offer(a,'Connected')}
 eth.request({method:'eth_accounts'}).then(known).catch(function(){});
 if(eth.on){eth.on('accountsChanged',known);eth.on('disconnect',function(){known([])})}
@@ -535,11 +543,10 @@ document.querySelectorAll('[data-dl]').forEach(function(el){el.addEventListener(
   ev.preventDefault();if(busy){say('One download at a time. The other one is still drawing.');return}
   var kind=el.getAttribute('data-dl');var n=el.getAttribute('data-id')||el.getAttribute('data-day');var unit=el.getAttribute('data-unit')||'face';var prefix=el.getAttribute('data-prefix')||PREFIX;
   var pixel=el.hasAttribute('data-pixel')?el.getAttribute('data-pixel')==='1':PIXEL;var bg=el.getAttribute('data-bg')||'#000000';
-  busy=true;var was=el.textContent;el.textContent='\\u2026';el.setAttribute('aria-busy','true');say('');var u=null;
+  busy=true;var was=el.textContent;el.textContent='…';el.setAttribute('aria-busy','true');say('');var u=null;
   try{
     var ctl=new AbortController();var t=setTimeout(function(){ctl.abort()},20000);
-    var res;try{res=await fetch(el.getAttribute('data-src'),{signal:ctl.signal})}finally{clearTimeout(t)}
-    if(!res.ok)throw new Error('the image answered '+res.status);var text=await res.text();
+    var res,text;try{res=await fetch(el.getAttribute('data-src'),{signal:ctl.signal});if(!res.ok)throw new Error('the image answered '+res.status);text=await res.text()}finally{clearTimeout(t)}
     if(kind==='svg'){save(new Blob([text],{type:'image/svg+xml'}),prefix+'-'+unit+'-'+n+'.svg');return}
     text=text.replace(/ width="\\d+" height="\\d+"/,' width="'+size+'" height="'+size+'"');
     u=URL.createObjectURL(new Blob([text],{type:'image/svg+xml'}));var img=new Image();
@@ -709,7 +716,7 @@ if(eth&&eth.on){eth.on('accountsChanged',function(accs){var a=accs&&accs[0]||nul
   eth.on('chainChanged',function(id){if(parseInt(id,16)===parseInt(CFG.chainHex,16))return;say('The wallet switched network. Switch back to '+CFG.name+' to roll.')})}
 btn.addEventListener('click',async function(){
   if(locked)return;var from=null;var submitting=false;var step='connecting to your wallet';
-  if(!eth||!eth.request){say('No wallet detected. Open this site in your wallet\\u2019s browser, or install one like Rabby, MetaMask or Coinbase Wallet.');return}
+  if(!eth||!eth.request){say('No wallet detected. Open this site in your wallet’s browser, or install one like Rabby, MetaMask or Coinbase Wallet.');return}
   lock(true);
   var snapPins=packed(),snapN=count(),snapWei=BigInt(CFG.prices[snapN]);
   try{
@@ -862,7 +869,7 @@ ${staleNote(status)}
 ${NEW_DAY}
 <nav class="sitenav small" aria-label="Site">${menu()}</nav>
 <section class="builder" aria-labelledby="build-h">
-<h2 id="build-h" class="syne" hidden>Build your roll</h2>
+<h2 id="build-h" class="syne sr-only">Build your roll</h2>
 <div class="stage"><div class="preview px"><img id="preview" src="/preview.svg?p=ffffffffffffffffffffffffffffffff" alt="Your pins on a grey stand-in; grey parts are luck's" width="512" height="512"></div>
 <p class="sum" id="sum">No pins. Luck decides everything.</p>
 <div style="display:flex;flex-direction:column;gap:10px">${cta}</div>
@@ -905,7 +912,9 @@ ${roll ? `<p class="small">${rolled ? rolled[0].toUpperCase() + rolled.slice(1) 
 ${f.one !== 255 ? `<p class="small">A one of one is a full drawing. It kept the pinned background and ground colour, if any, and replaced every other pin.</p>` : ""}
 ${traitList(t)}
 <p class="small" style="line-height:1.7">Seed ${f.seed.toString()}. Token ${id} of <a href="${explorer(chain.chainId)}/address/${chain.address}">${shortAddr(chain.address)}</a> on ${chainName(chain.chainId)}. The image and its rules live in the contract.</p>
+${sizePicker()}
 ${downloadBar(id, p.bg)}
+<p class="msg" id="msg" aria-live="polite"></p>
 <nav class="nav" aria-label="Faces"><a href="/">roll yours</a></nav>
 <nav class="nav small" aria-label="Links"><a href="${opensea(chain, id)}">OpenSea</a><a href="${explorer(chain.chainId)}/nft/${chain.address}/${id}">Basescan</a><a href="/face/${id}.png${IMG_Q}">Link card</a><a href="/api/face/${id}">JSON</a></nav>
 <nav class="share" aria-label="Share"><a href="https://warpcast.com/~/compose?text=${text}&embeds[]=${encodeURIComponent(url)}">Share on Farcaster</a><a href="https://x.com/intent/post?text=${text}&url=${encodeURIComponent(url)}">Share on X</a></nav>
@@ -1007,4 +1016,10 @@ ${footer(chain)}
   const body = kind === "terms" ? terms : privacy;
   const title = kind === "terms" ? "Terms" : "Privacy";
   return layout(`${title} | ${SITE}`, p, body, "/today.png", `/${kind}`);
+}
+
+/** A recoverable server failure; never expose a stack trace or collapse to a blank text page. */
+export function serviceError(): string {
+  const body = `<main id="main" class="single">${topBar("Unavailable")}<h1 class="syne">This page could not be loaded</h1><p>Please try again. Your wallet and any transaction already sent are unaffected.</p><nav class="nav" aria-label="Recovery"><a href="">Try again</a><a href="/">Back to the collection</a></nav></main>`;
+  return layout(`Unavailable | ${SITE}`, groundOf(pageTraits(null, 0)), body, "/today.png", "/", "This page could not be loaded. Try again.", false);
 }

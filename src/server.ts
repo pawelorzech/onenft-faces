@@ -1,9 +1,10 @@
+import { sitemapResponse, robotsTxt } from "./seo.ts";
 import { transactionApi } from "./transaction-status.ts";
 import { mintPage } from "./mint-page.ts";
-import { SLOTS } from "./sprites.ts";
-import { svgOf, itemSvg, skinSvg, hairColourSvg, groundSvg, topColourSvg, accentSvg, previewSvg, unpackPins, faceOfDay, pinKeyOk, SKINS, HAIRS, GROUNDS, TOPCOLORS, ACCENTS } from "./faces.ts";
+import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
+import { svgOf, itemSvg, skinSvg, hairColourSvg, groundSvg, topColourSvg, accentSvg, previewSvg, unpackPins, faceOfDay, pinKeyOk, SKINS, HAIRS, GROUNDS, TOPCOLORS, ACCENTS, BASE_TRAITS } from "./faces.ts";
 import { chainState, chainStatus, contractEnabled, readNow, startRollScan, CONTRACT, CHAIN_ID, EPOCH_SECONDS, type ChainState } from "./contract.ts";
-import { homePage, facePage, howPage, legalPage, notFound, chainDown, traitsOfRecord, goTarget } from "./site.ts";
+import { serviceError, SITE, homePage, facePage, howPage, legalPage, notFound, chainDown, traitsOfRecord, goTarget } from "./site.ts";
 import { rarityPage, onesPage, holderPage, yoursPage, assetsPage } from "./pages.ts";
 import { faceJson, stateJson, holderJson, specJson, rollJson } from "./api.ts";
 import { cardPng, squarePng } from "./image.ts";
@@ -59,7 +60,7 @@ export async function handle(req: Request): Promise<Response> {
     return withHeaders(await route(url, req));
   } catch (e) {
     console.error(`route ${url.pathname}:`, (e as Error).message);
-    return withHeaders(url.pathname.startsWith("/api/") ? json({ error: "internal error" }, 0, 500) : text("internal error", 500));
+    return withHeaders(url.pathname.startsWith("/api/") ? json({ error: "internal error" }, 0, 500) : html(serviceError(), 500));
   }
 }
 
@@ -76,10 +77,24 @@ async function route(url: URL, req: Request): Promise<Response> {
     const s = chainStatus();
     return json({ ok: !s.configured || s.known, epoch, chain: s, keeper: keeperInfo() }, 0, !s.configured || s.known ? 200 : 503);
   }
-  if (path === "/robots.txt") return text("User-agent: *\nAllow: /\nDisallow: /api/\n");
+  if (path === "/robots.txt") return new Response(robotsTxt(SITE), { headers: { "content-type": "text/plain; charset=utf-8" } });
+  if (path.startsWith("/sitemap")) {
+    const snapshot = await chainState();
+    if (contractEnabled() && !snapshot) return new Response("The collection could not be read. Try again in a minute.", { status: 503, headers: { "content-type": "text/plain; charset=utf-8", "retry-after": "60", "cache-control": "no-store" } });
+    const tokens = snapshot ? [...snapshot.faces.keys()].sort((a, b) => a - b).map(id => "/face/" + id) : [];
+    const pages = ["/", "/rarity", "/ones", "/how", "/assets", "/terms", "/privacy"];
+    const map = sitemapResponse(url, SITE, pages, tokens);
+    if (map) return map;
+  }
   if (path === "/spec.json") return json(specJson(), 3600);
   if (path === "/today.svg") return svg(svgOf(faceOfDay(epoch)), false);
   if (path === "/today.png") return png(cardPng(`day${epoch}`, "faces", "roll yours", faceOfDay(epoch), true), false);
+  const oneOfOne = path.match(/^\/one-of-one\/(\d+)\.svg$/);
+  if (oneOfOne) {
+    const id = Number(oneOfOne[1]);
+    if (!Number.isSafeInteger(id) || !ONE_OF_ONES[id]) return text("no such drawing", 404);
+    return svg(svgOf({ ...BASE_TRAITS, one: id, ground: (id * 3) % GROUNDS.length }, 240), true);
+  }
   if (path === "/go") return redirect(goTarget(url.searchParams.get("who")), 302);
   if (path === "/preview.svg") {
     const p = (url.searchParams.get("p") ?? "f".repeat(32)).toLowerCase();

@@ -1,7 +1,7 @@
 /** Inner pages: rarity, the 1/1 gallery, holders, your wallet, assets. */
 import { SLOTS, ONE_OF_ONES } from "./sprites.ts";
-import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, svgOf, groundOf, pinOk, skinPinOk, combinations, rarityOf, unpackPins, BASE_TRAITS, type Traits } from "./faces.ts";
-import { SITE, REPO, PARENT, FILE_PREFIX, layout, topBar, esc, num, plural, label, isAuthor, tierTag, pageTraits, traitsOfRecord, stripSize, explorer, chainName, openseaCollection, opensea, shortAddr, MAX_SUPPLY, staleNote, whoBlock, sizePicker, downloadBar, connectScript, downloadScript, nameHeading, traitList, heldBy, rolledBy, dateOf, eth, footer, type Names, NO_NAMES, IMG_Q } from "./site.ts";
+import { WEIGHTS, SKIN_WEIGHTS, SKINS, HAIRS, TOPCOLORS, GROUNDS, ACCENTS, groundOf, pinOk, skinPinOk, combinations, rarityOf, unpackPins } from "./faces.ts";
+import { SITE, REPO, PARENT, FILE_PREFIX, layout, topBar, esc, num, plural, label, isAuthor, tierTag, pageTraits, traitsOfRecord, explorer, chainName, openseaCollection, opensea, shortAddr, MAX_SUPPLY, staleNote, whoBlock, sizePicker, downloadBar, connectScript, downloadScript, nameHeading, traitList, heldBy, rolledBy, dateOf, eth, footer, type Names, NO_NAMES, IMG_Q } from "./site.ts";
 import type { ChainState, ChainStatus } from "./contract.ts";
 import { dataFreshness } from "./contract.ts";
 import type { Address } from "viem";
@@ -13,10 +13,10 @@ export function rarityPage(chain: ChainState | null, epoch: number): string {
   const p = groundOf(pageTraits(chain, epoch));
   const tables = SLOTS.map((s, k) => {
     const rows = s.items.map((it, i) => `<tr><td><img class="px" src="/item/${s.slot}/${i}.svg" alt="" width="40" height="40" loading="lazy">${esc(it.name)}${tierTag(it.tier)}</td><td>${s.pinnable ? (pinOk(k, i) ? "pin or luck" : "luck only") : "luck only"}</td><td class="n">${pct(WEIGHTS[k][i])}</td></tr>`).join("");
-    return `<div id="s${k}"><h3 class="syne">${esc(s.trait)}, ${s.items.length} items${s.pinnable ? ", pinnable" : ", never pinnable"}</h3><div class="scroll"><table class="tr"><thead><tr><th>item</th><th>how you get it</th><th style="text-align:right">odds per roll</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    return `<div id="s${k}"><h2 class="syne section-title">${esc(s.trait)}, ${s.items.length} items${s.pinnable ? ", pinnable" : ", never pinnable"}</h2><div class="scroll"><table class="tr"><thead><tr><th>item</th><th>how you get it</th><th style="text-align:right">odds per roll</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   });
-  const skins = `<div><h3 class="syne">Skin, ${SKINS.length} tones, pinnable</h3><div class="scroll"><table class="tr"><tbody>${SKINS.map((s, i) => `<tr><td><i style="display:inline-block;width:40px;height:40px;background:${s.main};vertical-align:middle;margin-right:8px;box-shadow:0 0 0 1px var(--line)"></i>${esc(s.name)}${tierTag(s.tier)}</td><td>${skinPinOk(i) ? "pin or luck" : "luck only"}</td><td class="n">${pct(SKIN_WEIGHTS[i])}</td></tr>`).join("")}</tbody></table></div></div>`;
-  const colours = [["Hair colour", HAIRS], ["Top colour", TOPCOLORS], ["Ground", GROUNDS], ["Accent", ACCENTS]].map(([name, list]) => `<div><h3 class="syne">${name}, ${(list as any[]).length}, even odds, pinnable</h3><p class="small">${(list as { name: string; main: string }[]).map((c) => `<i style="display:inline-block;width:18px;height:18px;background:${c.main};vertical-align:middle;margin-right:4px;box-shadow:0 0 0 1px var(--line)"></i>${esc(c.name)}`).join(" &nbsp; ")}</p></div>`).join("");
+  const skins = `<div><h2 class="syne section-title">Skin, ${SKINS.length} tones, pinnable</h2><div class="scroll"><table class="tr"><tbody>${SKINS.map((s, i) => `<tr><td><i style="display:inline-block;width:40px;height:40px;background:${s.main};vertical-align:middle;margin-right:8px;box-shadow:0 0 0 1px var(--line)"></i>${esc(s.name)}${tierTag(s.tier)}</td><td>${skinPinOk(i) ? "pin or luck" : "luck only"}</td><td class="n">${pct(SKIN_WEIGHTS[i])}</td></tr>`).join("")}</tbody></table></div></div>`;
+  const colours = [["Hair colour", HAIRS], ["Top colour", TOPCOLORS], ["Ground", GROUNDS], ["Accent", ACCENTS]].map(([name, list]) => `<div><h2 class="syne section-title">${name}, ${(list as any[]).length}, even odds, pinnable</h2><p class="small">${(list as { name: string; main: string }[]).map((c) => `<i style="display:inline-block;width:18px;height:18px;background:${c.main};vertical-align:middle;margin-right:4px;box-shadow:0 0 0 1px var(--line)"></i>${esc(c.name)}`).join(" &nbsp; ")}</p></div>`).join("");
   const body = `<main class="wide" id="main">
 ${topBar("Rarity")}
 <h1 class="syne">Every item and its odds</h1>
@@ -35,10 +35,9 @@ export function onesPage(chain: ChainState | null, epoch: number, names: Names =
   const holders = new Map<number, number>();
   if (chain) for (const f of chain.faces.values()) if (f.one !== 255) holders.set(f.one, f.id);
   const tiles = ONE_OF_ONES.map((o, i) => {
-    const t: Traits = { ...BASE_TRAITS, one: i, ground: (i * 3) % GROUNDS.length };
     const id = holders.get(i);
     const cap = id ? `#${id}, ${heldBy(chain!, id, names) || "rolled"}` : chain ? "still in the pool" : "pool status unknown";
-    const img = `<div class="px">${stripSize(svgOf(t, 240))}</div>`;
+    const img = `<img class="px" src="/one-of-one/${i}.svg" alt="" width="240" height="240" loading="lazy">`;
     return id ? `<a href="/face/${id}" class="gone">${img}<div class="cap">${esc(o.name)}, ${cap}</div></a>` : `<div>${img}<div class="cap">${esc(o.name)}, ${cap}</div></div>`;
   });
   const body = `<main class="wide" id="main">
@@ -61,12 +60,12 @@ ${topBar("Your wallet")}
 ${staleNote(status)}
 <div><h1 class="syne">Your faces</h1><p class="lead" style="margin-top:8px">Connect a wallet or type an address, and this page lists every face it holds, each one ready to save as SVG, PNG or JPEG.</p></div>
 ${bad !== null ? `<p class="note" role="alert">"${esc(bad)}" is not a wallet address or an ENS name. An address is 42 characters starting with 0x; a name ends in .eth.</p>` : ""}
-${whoBlock(chain, status)}
+${whoBlock(chain, status, bad ?? "")}
 <p class="small">Viewing a wallet needs no transaction and no signature. Its public address appears in the page URL and is sent to this site to load its tokens. The same list is on <a href="https://${PARENT}/wallet">${PARENT}</a> for every collection at once; each site connects on its own.</p>
 ${footer(chain)}
 </main>
 ${connectScript("/", true)}`;
-  return layout(`Your faces | ${SITE}`, p, body, "/today.png", "/yours");
+  return layout(`Your faces | ${SITE}`, p, body, "/today.png", "/yours", undefined, false);
 }
 
 export function holderPage(who: Address, handle: string, chain: ChainState, names: Names = NO_NAMES, status: ChainStatus | null = null): string {

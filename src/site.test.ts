@@ -22,6 +22,13 @@ export function fakeChain(extra: Partial<ChainState> = {}): ChainState {
 const DOWN: ChainStatus = { configured: true, known: false, stale: false, readAt: null, ageSeconds: null, error: "no answer", errorAt: 1, scannedBlock: "0", scanned: false };
 const STALE: ChainStatus = { configured: true, known: true, stale: true, readAt: Date.parse("2026-09-05T12:04:00Z"), ageSeconds: 600, error: "no answer", errorAt: 1, scannedBlock: "0", scanned: true };
 
+test("a face detail has an accessible place for download failures and a size picker", () => {
+  const chain = fakeChain();
+  const html = facePage(2, chain.faces.get(2)!, chain);
+  expect(html).toContain('id="msg" aria-live="polite"');
+  expect(html).toContain('aria-labelledby="sizelab"');
+});
+
 test("home without a contract renders the builder and says rolling opens later", () => {
   const h = homePage(null, 20701);
   expect(h).toContain("Rolling opens with the contract");
