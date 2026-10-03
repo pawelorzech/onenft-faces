@@ -11,6 +11,7 @@ import { applyCommitEvents } from "./commit-log.ts";
  * as a complete history.
  */
 import { createPublicClient, http, parseAbi, parseAbiItem, toFunctionSelector, decodeEventLog, type Address, type Hex, type TransactionReceipt } from "viem";
+import { readTransport } from "./rpc.ts";
 import { base, baseSepolia } from "viem/chains";
 import { Swr, type SwrStatus } from "./swr.ts";
 
@@ -93,7 +94,7 @@ export const STALE_AFTER_MS = Number(process.env.STALE_AFTER_MS ?? 90_000);
 const DEADLINE_MS = Number(process.env.CHAIN_DEADLINE_MS ?? 2_500);
 const RPC_TIMEOUT_MS = Number(process.env.RPC_TIMEOUT_MS ?? 8_000);
 
-const client = CONTRACT ? createPublicClient({ chain, transport: http(process.env.BASE_RPC_URL, { timeout: RPC_TIMEOUT_MS, retryCount: 1 }) }) : null;
+const client = CONTRACT ? createPublicClient({ chain, transport: readTransport(CHAIN_ID, RPC_TIMEOUT_MS) }) : null;
 export function contractEnabled(): boolean {
   return Boolean(client && CONTRACT);
 }
